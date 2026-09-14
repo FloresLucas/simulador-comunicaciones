@@ -90,7 +90,7 @@ def _build_cached(tipo_senal, frecuencia, amplitud, frec_muestreo, burst,
     fs_ = int(frec_muestreo)
     senoidal = tipo_senal.startswith("Onda")
     factor = 10 ** (atenuacion_db / 20)
-    sigma = nivel_ruido * (3.0 if burst else 1.0)
+    sigma = max(nivel_ruido, 0.0)
 
     def gen(ti):
         if senoidal:
@@ -100,13 +100,16 @@ def _build_cached(tipo_senal, frecuencia, amplitud, frec_muestreo, burst,
     senal_original = gen(t)
     rng = np.random.default_rng(seed)
     ruido = rng.normal(0, sigma, len(t))
+    if burst:
+        m = (t % 0.8) < 0.09
+        ruido[m] = rng.normal(0, sigma * 3.0, int(m.sum()))
     senal_atenuada = senal_original * factor
     senal_recibida = senal_atenuada + ruido
 
     a_atenuada = A * factor
     p_tx = (A ** 2) / (2 if senoidal else 1)
     p_senal = (a_atenuada ** 2) / (2 if senoidal else 1)
-    p_ruido = sigma ** 2 if nivel_ruido > 0 else 1e-10
+    p_ruido = float(np.mean(ruido ** 2)) if nivel_ruido > 0 else 1e-10
     snr_veces = p_senal / p_ruido
     snr_db = 10 * np.log10(snr_veces)
 
@@ -278,7 +281,7 @@ _SCOPE_HTML = """
             box-shadow:0 1px 3px rgba(0,0,0,.35);">
   <div style="display:flex;justify-content:space-between;align-items:center;
               padding:8px 14px;font-family:'Roboto',sans-serif;font-size:12px;color:#9ea3b0;">
-    <span>OSCILOSCOPIO · TX → CANAL → RX · repaso ×__SPEED__</span>
+    <span>OSCILOSCOPIO · TX → CANAL → RX · repaso ×__SPEED__<span id="burstNote"></span></span>
     <span id="snrBadge" style="font-variant-numeric:tabular-nums;"></span>
   </div>
   <canvas id="scope" style="width:100%;height:260px;display:block;"></canvas>
@@ -289,6 +292,8 @@ const P=__PARAMS__;
 const cv=document.getElementById('scope');
 const ctx=cv.getContext('2d');
 const badge=document.getElementById('snrBadge');
+const bnote=document.getElementById('burstNote');
+if(P.burst){bnote.textContent=' · RÁFAGA';bnote.style.color='#e57373';}
 let W=0,H=0;
 function size(){const r=cv.getBoundingClientRect();W=r.width||1;H=r.height||1;
   const d=Math.min(window.devicePixelRatio||1,1.5);
@@ -309,6 +314,7 @@ function gauss(){
 }
 const buf=[];const BMAX=450;
 const spPower=P.senoidal?Math.pow(P.A*P.factor,2)/2:Math.pow(P.A*P.factor,2)/4;
+function burstEnv(t){const ph=(t%0.8+0.8)%0.8;return ph<0.09?1:0;}
 let lastD=0,frm=0;
 function draw(ts){
   if(ts-lastD<33.3){requestAnimationFrame(draw);return;}
@@ -343,7 +349,7 @@ function draw(ts){
   for(let i=0;i<N;i++){
     const x=i/(N-1)*W;
     const ti=now-TV*(1-i/(N-1));
-    const rn=gauss()*P.sigma;
+    const rn=gauss()*P.sigma*(P.burst?1+2*burstEnv(now):1);
     buf.push(rn);if(buf.length>BMAX)buf.shift();
     const y=toY(wave(ti)*P.factor+rn);
     i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
@@ -372,12 +378,13 @@ requestAnimationFrame(draw);
 def _scope_component(d, speed):
     params = {
         "f": d["frecuencia"], "A": d["amplitud"], "sigma": d["sigma"],
-        "factor": d["factor"], "senoidal": d["senoidal"], "speed": float(speed),
+        "factor": d["factor"], "senoidal": d["senoidal"], "burst": bool(d["burst"]),
+        "speed": float(speed),
         "tx": "#7ee2b8", "rx": "#f5b04b",
         "ok": "#7ee2b8", "mid": "#f5b04b", "bad": "#e57373",
     }
     html = _SCOPE_HTML.replace("__PARAMS__", json.dumps(params)).replace("__SPEED__", f"{speed:.2f}")
-    st.iframe(html, height=280, width="stretch")
+    st.iframe(html, height=310, width="stretch")
 
 
 # =============================================================================
@@ -450,7 +457,7 @@ requestAnimationFrame(draw);
 def _noise_component(d):
     params = {"sigma": d["sigma"], "curve": "#f5b04b"}
     html = _NOISE_HTML.replace("__PARAMS__", json.dumps(params)).replace("__SIGMA__", f"{d['sigma']:.2f}")
-    st.iframe(html, height=185, width="stretch")
+    st.iframe(html, height=192, width="stretch")
 
 
 # =============================================================================
@@ -553,7 +560,7 @@ def _fourier_component(d):
               "accent": "#8ab4f8"}
     html = (_FOUR_HTML.replace("__TITLE__", title)
             .replace("__PARAMS__", json.dumps(params)))
-    st.iframe(html, height=345, width="stretch")
+    st.iframe(html, height=360, width="stretch")
 
 
 # =============================================================================
@@ -604,7 +611,7 @@ def _fig_recon(d):
 
     fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
                         vertical_spacing=0.06, row_heights=[0.62, 0.38],
-                        subplot_titles=('Señal y reconstrucciones', 'Error de la reconstrucción sinc'))
+                        subplot_titles=('', 'Error de la reconstrucción sinc'))
     d0 = fdata(0)
     fig.add_trace(d0["orig"], row=1, col=1)
     fig.add_trace(d0["muestras"], row=1, col=1)
@@ -628,10 +635,10 @@ def _fig_recon(d):
         ann.update(font=dict(size=12, color='#9ea3b0'))
     fig.update_layout(
         template='plotly_dark', height=520, hovermode='x unified',
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+        showlegend=False,
         updatemenus=_play_buttons(120),
         sliders=_frame_slider(nf, 'Muestras tomadas: '),
-        margin=dict(l=40, r=40, t=85, b=40))
+        margin=dict(l=40, r=40, t=95, b=40))
     return fig
 
 
@@ -744,11 +751,14 @@ elif _PRESET == "pulse":
     st.toast("Señal cambiada a tren de pulsos.", icon="🎵")
 elif _PRESET == "burst_on":
     st.session_state["burst"] = True
-    st.toast("Ráfaga de ruido activa: ruido instantáneo ×3.", icon="🌩️")
+    st.toast("Ráfaga de ruido temporal: interferencia fuerte que entra y sale.", icon="🌩️")
 elif _PRESET == "burst_off":
-    st.session_state["seed"] = np.random.randint(0, 100000)
     st.session_state["burst"] = False
-    st.toast("Nueva realización del ruido (otra semilla).", icon="🎲")
+    st.toast("Ráfaga quitada: vuelve el ruido base.", icon="🌤️")
+elif _PRESET == "ideal":
+    st.session_state["burst"] = False
+    st.session_state["nivel_ruido"] = 0.0
+    st.toast("Canal ideal: sin ruido (σ = 0). La RX replica la TX.", icon="😇")
 elif _PRESET == "surprise":
     rng = np.random.default_rng()
     st.session_state["tipo_senal"] = rng.choice(["Onda Senoidal (Analógica)", "Tren de Pulsos (Digital)"])
@@ -831,7 +841,7 @@ with c2:
     _chain_card("CANAL · MEDIO", "🌊", "#c4c7d1",
                 f"SNR {_snr:.1f} dB",
                 [("Atenuación", f"{st.session_state['atenuacion_db']:.1f} dB"),
-                 ("Ruido σ", f"{d0['sigma']:.2f} V")], valor_color=_snr_color(_snr))
+                 ("Ruido σ", f"{d0['sigma']:.2f} V" + (" · ráfaga" if d0["burst"] else ""))], valor_color=_snr_color(_snr))
 with a2:
     _arrow()
 with c3:
@@ -936,20 +946,21 @@ with tab_canal:
 
     cb1, cb2 = st.columns([1, 1])
     with cb1:
-        if st.button("💥 Ráfaga de ruido ×3", use_container_width=True):
-            st.session_state["_preset"] = "burst_on"
+        if st.button("🌤️ Quitar ráfaga" if st.session_state["burst"]
+                     else "🌩️ Ráfaga de ruido (temporal)", use_container_width=True):
+            st.session_state["_preset"] = "burst_off" if st.session_state["burst"] else "burst_on"
             st.rerun()
     with cb2:
-        if st.button("🔁 Nueva realización del ruido", use_container_width=True):
-            st.session_state["_preset"] = "burst_off"
+        if st.button("😇 Canal ideal (sin ruido)", use_container_width=True):
+            st.session_state["_preset"] = "ideal"
             st.rerun()
-    st.caption("La ráfaga multiplica el ruido instantáneo por 3; la nueva realización regenera la muestra "
-               "de ruido con otra semilla.")
+    st.caption("La ráfaga dispara picos de interferencia que entran y salen (se ven en el osciloscopio); "
+               "el canal ideal elimina todo el ruido para comparar los extremos.")
 
     if st.session_state["burst"]:
         _callout("ojo", "Ráfaga de ruido activa",
-                 f"El ruido instantáneo se multiplicó por 3 (σ = {d0['sigma']:.2f} V). La señal puede "
-                 "hundirse en tramos: es el peor escenario del canal.")
+                 f"Interferencia temporal: en los tramos de ráfaga el ruido instantáneo llega a σ ≈ "
+                 f"{d0['sigma'] * 3:.2f} V. La RX se hunde en picos: es el peor escenario del canal.")
     if d0["snr_db"] < 0:
         _callout("ojo", "SNR negativo",
                  "El ruido supera a la señal: este enlace es prácticamente inservible para transportar "
@@ -983,6 +994,8 @@ with tab_muestreo:
 
     _section("Reconstrucción: sinc vs. unir los puntos", "🧪")
     st.plotly_chart(_fig_recon(d0), width="stretch")
+    st.caption("Verde: señal original · puntos: muestras tomadas · gris: unir los puntos (lineal) · "
+               "celeste: reconstrucción sinc (correcta) · rojo: error sinc vs original.")
 
     mr1, mr2 = st.columns([1, 2])
     with mr1:
