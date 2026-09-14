@@ -4,6 +4,10 @@ Prototipo interactivo para la materia Comunicaciones. Simula el enlace
 completo: generación de la señal, degradación por canal (atenuación + ruido
 AWGN), muestreo/reconstrucción y el límite de Shannon-Hartley.
 
+Los ajustes del sistema (señal, frecuencia, amplitud, ancho de banda, ruido,
+atenuación, muestreo y tasa) viven en la barra lateral, siempre accesible sin
+desplazarse.
+
 ## Pestañas
 
 - **Señal**: osciloscopio en vivo (TX → CANAL → RX) y serie de Fourier animada, todo en canvas del navegador.

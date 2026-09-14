@@ -22,7 +22,7 @@ except ImportError:
 st.set_page_config(
     page_title="Simulador TFI - Comunicaciones",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 st.markdown("""
@@ -249,7 +249,7 @@ def _arrow():
 def _play_buttons(duration_ms=70):
     return [dict(
         type="buttons", showactive=False, direction="left",
-        x=0.0, y=1.12, xanchor="left", yanchor="top",
+        x=0.0, y=1.02, xanchor="left", yanchor="bottom",
         buttons=[
             dict(label="▶ Reproducir", method="animate",
                  args=[None, {"frame": {"duration": duration_ms, "redraw": True},
@@ -627,12 +627,11 @@ def _fig_recon(d):
     for ann in fig.layout.annotations:
         ann.update(font=dict(size=12, color='#9ea3b0'))
     fig.update_layout(
-        title='Muestreo: unir los puntos no reconstruye; la sinc sí',
         template='plotly_dark', height=520, hovermode='x unified',
-        legend=dict(orientation='h', yanchor='bottom', y=1.0, xanchor='right', x=1),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
         updatemenus=_play_buttons(120),
         sliders=_frame_slider(nf, 'Muestras tomadas: '),
-        margin=dict(l=40, r=40, t=65, b=40))
+        margin=dict(l=40, r=40, t=85, b=40))
     return fig
 
 
@@ -779,48 +778,38 @@ d0 = _build_cached(
 # =============================================================================
 # HERO + BARRA DE AJUSTES + CADENA TX → CANAL → RX
 # =============================================================================
+with st.sidebar:
+    st.markdown("**⚙️ Ajustes del sistema**")
+    st.selectbox("Tipo de señal",
+                 ["Onda Senoidal (Analógica)", "Tren de Pulsos (Digital)"],
+                 key="tipo_senal")
+    sa1, sa2 = st.columns(2)
+    with sa1:
+        st.slider("Frecuencia (Hz)", min_value=1, max_value=20, step=1, key="frecuencia")
+    with sa2:
+        st.slider("Amplitud A (V)", min_value=1.0, max_value=10.0, step=0.5, key="amplitud")
+    sb1, sb2 = st.columns(2)
+    with sb1:
+        st.slider("Ancho de banda B (kHz)", min_value=1, max_value=100, step=1, key="ancho_banda_khz")
+    with sb2:
+        st.slider("Tasa R (kbps)", min_value=1, max_value=200, step=1, key="tasa_deseada_kbps")
+    sc1, sc2 = st.columns(2)
+    with sc1:
+        st.slider("Desviación del ruido σ (V)", min_value=0.0, max_value=5.0, step=0.1, key="nivel_ruido")
+    with sc2:
+        st.slider("Atenuación (dB)", min_value=-20.0, max_value=0.0, step=0.5, key="atenuacion_db")
+    st.slider("Muestreo fs (Hz)", min_value=5, max_value=100, step=1, key="frec_muestreo")
+    if st.button("⚡ Variar todo al azar", type="secondary", use_container_width=True):
+        st.session_state["_preset"] = "surprise"
+        st.rerun()
+    st.caption("Cada cambio se refleja al instante en todas las pestañas.")
+
 st.markdown(
     "<div style='text-align:center;'>"
     "<h1 style='font-size:1.75rem;margin-bottom:.2rem;'>Simulador integral de sistemas de comunicación</h1>"
     "<div style='color:#9ea3b0;font-size:13.5px;'>Materia: Comunicaciones · prototipo interactivo para el "
     "estudio del enlace completo</div></div>",
     unsafe_allow_html=True)
-
-aj1, aj2 = st.columns([6, 2])
-with aj1:
-    st.markdown(
-        "<div style='display:flex;align-items:center;gap:8px;border-left:3px solid #8ab4f8;padding-left:10px;"
-        "margin:22px 0 8px;color:#e6e0e9;font-size:15px;font-weight:500;'>"
-        "<span style='font-size:17px;'>⚙️</span>Ajustes del sistema</div>",
-        unsafe_allow_html=True)
-with aj2:
-    if st.button("⚡ Variar todo al azar", type="secondary", use_container_width=True):
-        st.session_state["_preset"] = "surprise"
-        st.rerun()
-
-fila1 = st.columns(4)
-with fila1[0]:
-    st.selectbox("Tipo de señal",
-                 ["Onda Senoidal (Analógica)", "Tren de Pulsos (Digital)"],
-                 key="tipo_senal")
-with fila1[1]:
-    st.slider("Frecuencia (Hz)", min_value=1, max_value=20, step=1, key="frecuencia")
-with fila1[2]:
-    st.slider("Amplitud A (V)", min_value=1.0, max_value=10.0, step=0.5, key="amplitud")
-with fila1[3]:
-    st.slider("Ancho de banda B (kHz)", min_value=1, max_value=100, step=1, key="ancho_banda_khz")
-
-fila2 = st.columns(4)
-with fila2[0]:
-    st.slider("Desviación del ruido σ (V)", min_value=0.0, max_value=5.0, step=0.1, key="nivel_ruido")
-with fila2[1]:
-    st.slider("Atenuación (dB)", min_value=-20.0, max_value=0.0, step=0.5, key="atenuacion_db")
-with fila2[2]:
-    st.slider("Muestreo fs (Hz)", min_value=5, max_value=100, step=1, key="frec_muestreo")
-with fila2[3]:
-    st.slider("Tasa R (kbps)", min_value=1, max_value=200, step=1, key="tasa_deseada_kbps")
-
-st.caption("Cada cambio se refleja al instante en todas las pestañas del simulador.")
 
 st.markdown("---")
 
