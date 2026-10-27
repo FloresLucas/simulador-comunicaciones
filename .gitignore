@@ -6,6 +6,7 @@ venv*/
 env/
 *.env
 .streamlit/secrets.toml
+Guion de exposición Simulador de comunicaciones.pdf
 .DS_Store
 .idea/
 .vscode/
