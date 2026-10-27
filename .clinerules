@@ -1,0 +1,67 @@
+# DESIGN SYSTEM — Simulador TFI de Comunicaciones (Streamlit)
+
+Estas reglas aplican a todo cambio visual en este proyecto. El objetivo es que la
+interfaz se vea consistente y profesional.
+
+## Paleta
+
+| Rol | Token | Hex |
+|---|---|---|
+| Fondo principal | `--bg` | `#141218` |
+| Superficie de cards | `--card` | `#1d1b20` |
+| Bordes | `--border` | `#2b2a2e` |
+| Texto principal | `--text` | `#e6e0e9` |
+| Texto secundario | `--text-muted` | `#9ea3b0` |
+| Acento info | `--info` | `#8ab4f8` |
+| Éxito | `--ok` | `#7ee2b8` |
+| Error | `--error` | `#e57373` |
+| Advertencia | `--warn` | `#f5b04b` |
+
+No introducir colores fuera de esta paleta (salvo grises neutros de apoyo).
+
+## Estructura y texto
+
+- NO usar `st.write()` para texto clave. Usar `st.markdown()` con HTML/CSS
+  (helpers existentes: `_intro`, `_section`, `_callout`, `_card`, `_chip`,
+  `_verdict`).
+- Un tema por bloque: título de sección con `.psection`, luego contenido.
+- Los textos explicativos van en `_callout` con el tono correcto:
+  `concepto` (info), `porque` (advertencia suave), `ojo` (error), `proba` (éxito).
+
+## KPIs
+
+- Todo KPI va en una "card": `border-radius: 12px`, fondo `#1d1b20`, borde
+  sutil `#2b2a2e` y sombra suave.
+- Usar los helpers `_card(...)` / `_chip(...)` en vez de HTML suelto.
+- No inventar nuevas variantes de card sin actualizar este archivo y `style.css`.
+
+## Gráficos (Plotly)
+
+- Todos los gráficos deben usar `template='plotly_dark'`.
+- Fondo del gráfico igual al de la página:
+  `paper_bgcolor="#141218"`, `plot_bgcolor="#141218"`.
+- Márgenes mínimos: laterales e inferiores chicos (≈14 px), superior solo el
+  espacio necesario para título/controles. Usar las constantes
+  `_PLOT_BG` y `_PLOT_MARGIN` definidas en `simulador_v2.py`.
+- Preferir `hovermode='x unified'`, leyendas horizontales y fuentes ≤ 12 px.
+- Los colores de trazas siguen la paleta (celeste info, verde éxito, rojo error,
+  ámbar advertencia).
+
+## CSS
+
+- Todo el CSS vive en `style.css` (raíz del proyecto). NO agregar bloques
+  `<style>` inline en el archivo Python.
+- `simulador_v2.py` lee `style.css` con `Path(__file__).with_name("style.css")`
+  y lo inyecta con `st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)`.
+- Usar las variables CSS (`var(--info)`, etc.) dentro de `style.css`.
+- `.streamlit/config.toml` define el tema base (dark, `backgroundColor`).
+  Mantenerlo alineado con la paleta.
+
+## Convenciones del código
+
+- Los canvas (osciloscopio/histograma/Fourier) corren en el navegador y se
+  pausan con `IntersectionObserver`; no forzar re-renders de Streamlit.
+- El ruido del navegador es una realización independiente del ruido de Python
+  (seed): el SNR instantáneo puede diferir del de la tarjeta. Es esperado.
+- Verificar todo cambio con `python -m py_compile simulador_v2.py` y, si toca
+  la UI, con las pruebas de `AppTest` y una revisión en navegador.

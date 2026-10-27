@@ -1,0 +1,171 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+
+/* ============================================================================
+   DESIGN SYSTEM — Simulador TFI de Comunicaciones
+   Tokens de color, tipografía y componentes.
+   La app carga este archivo desde simulador_v2.py (no hay <style> inline).
+   ========================================================================== */
+
+:root {
+  --bg: #141218;
+  --card: #1d1b20;
+  --border: #2b2a2e;
+  --text: #e6e0e9;
+  --text-muted: #9ea3b0;
+  --text-soft: #c4c7d1;
+  --info: #8ab4f8;
+  --ok: #7ee2b8;
+  --error: #e57373;
+  --warn: #f5b04b;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 2px 8px rgba(0, 0, 0, .18);
+}
+
+/* ---------- Base ---------- */
+.stApp,
+[data-testid="stAppViewContainer"],
+[data-testid="stHeader"] {
+  background-color: var(--bg) !important;
+}
+
+html, body, p, label, button, code, input,
+[data-testid="stMarkdownContainer"], .stTabs [data-baseweb="tab"] {
+  font-family: 'Roboto', 'Segoe UI', system-ui, sans-serif !important;
+}
+
+.block-container {
+  padding-top: 3.4rem;
+  padding-bottom: 3rem;
+  max-width: 1200px;
+}
+
+h1, h2, h3, h4 {
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+h1 { font-size: 1.8rem; margin-bottom: 0.1rem; }
+
+/* ---------- Encabezado compacto ---------- */
+.app-head { text-align: center; margin: 0 0 14px; }
+.app-head h1 { font-size: 1.5rem; margin: 0; padding: 0; line-height: 1.25; }
+.app-sub { color: var(--text-muted); font-size: 13px; margin-top: 2px; }
+
+/* ---------- Sidebar: bloques de ajustes ---------- */
+.sb-brand { font-size: 15px; font-weight: 600; color: var(--text); margin: 2px 0 4px; }
+.sb-title {
+  font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--info); border-top: 1px solid var(--border);
+  padding-top: 12px; margin: 14px 0 8px;
+}
+.sb-brand + .sb-title { border-top: none; padding-top: 0; margin-top: 8px; }
+section[data-testid="stSidebar"] label p { font-size: 13px; }
+section[data-testid="stSidebar"] div.stButton > button { padding: 4px 6px; font-size: 13px; }
+
+img, svg { border-radius: var(--radius-sm); }
+
+/* ---------- KPIs: métricas nativas como cards ---------- */
+div[data-testid="stMetric"] {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+}
+
+div[data-testid="stMetric"] label {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+div[data-testid="stMetricValue"] { font-size: 1.9rem !important; }
+
+/* ---------- Secciones ---------- */
+.psection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-left: 3px solid var(--info);
+  padding-left: 10px;
+  margin: 20px 0 12px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.psection span { font-size: 17px; }
+
+/* ---------- Leyendas de gráficos ---------- */
+.legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 18px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.legend i {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  display: inline-block;
+}
+
+/* ---------- Controles ---------- */
+div.stButton > button,
+div.stDownloadButton > button {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  transition: border-color .15s ease, background-color .15s ease;
+}
+
+div.stButton > button:hover,
+div.stDownloadButton > button:hover {
+  border-color: var(--info);
+  color: var(--text);
+}
+
+div[data-baseweb="select"] > div,
+div[data-testid="stNumberInput"] input,
+div[data-testid="stTextInput"] input {
+  border-radius: var(--radius-sm) !important;
+}
+
+details[data-testid="stExpander"] {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(29, 27, 32, .55);
+}
+
+details[data-testid="stExpander"] summary:hover { color: var(--info); }
+
+/* Gráficos: que el canvas se funda con el fondo del tablero */
+.js-plotly-plot .plotly .main-svg { border-radius: var(--radius); }
+
+/* Scrollbar discreta (WebKit) */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb {
+  background: #3a383e;
+  border-radius: 8px;
+  border: 2px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover { background: #4a484f; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 700px) {
+  div[data-testid="stHorizontalBlock"] { flex-wrap: wrap; row-gap: 0.35rem; }
+  div[data-testid="stHorizontalBlock"] > div { min-width: 100% !important; flex: unset !important; }
+  .block-container { padding: 0.8rem 1rem 3rem; }
+  h1 { font-size: 1.45rem !important; }
+}
+
+#MainMenu, footer { visibility: hidden; }
+
+/* ---------- Sidebar compacto ---------- */
+section[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.45rem; }
+section[data-testid="stSidebar"] div.stButton > button { white-space: nowrap; }
+section[data-testid="stSidebar"] div.stButton > button p { margin: 0; font-size: 13px; }
