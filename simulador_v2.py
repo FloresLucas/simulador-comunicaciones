@@ -1,9 +1,9 @@
 # =============================================================================
-# SIMULADOR INTEGRAL DE SISTEMAS DE COMUNICACIÓN — v4.7
+# SIMULADOR INTEGRAL DE SISTEMAS DE COMUNICACIÓN — v5.1
 # Materia: Comunicaciones | Prototipo Interactivo Avanzado
 # -----------------------------------------------------------------------------
 # Movimiento 100% en el navegador (canvas) o en frames de Plotly: cero
-# re-renders automáticos -> cero flickering. Estructura: 4 pestañas, una idea
+# re-renders automáticos -> cero flickering. Estructura: 5 pestañas, una idea
 # por pestaña, y los ajustes del sistema en la barra lateral.
 # Los canvas se pausan de verdad (IntersectionObserver) cuando su pestaña
 # no está a la vista: el requestAnimationFrame se cancela y se reinicia.
@@ -17,6 +17,7 @@
 import csv
 import io
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -45,6 +46,14 @@ SEN_OLA = "Onda Senoidal (Analógica)"
 SEN_PULSO = "Tren de Pulsos (Digital)"
 TIPOS_SENAL = [SEN_OLA, SEN_PULSO]
 
+# Perturbaciones adicionales del canal (se suman al AWGN o modulan la señal).
+PERT_NINGUNA = "Ninguna (solo AWGN)"
+PERT_TONO = "Interferencia de tono"
+PERT_IMPULSO = "Ruido impulsivo"
+PERT_FADING = "Desvanecimiento"
+TIPOS_PERT = [PERT_NINGUNA, PERT_TONO, PERT_IMPULSO, PERT_FADING]
+P_IMPULSO = 0.02        # probabilidad de impulso por muestra
+
 _DEF = {
     "tipo_senal": SEN_OLA,
     "frecuencia": 5,
@@ -54,6 +63,8 @@ _DEF = {
     "ancho_banda_khz": 10,
     "tasa_deseada_kbps": 25,
     "frec_muestreo": 25,
+    "tipo_perturb": PERT_NINGUNA,
+    "intens_perturb": 40,
 }
 for _k, _v in _DEF.items():
     st.session_state.setdefault(_k, _v)
@@ -62,6 +73,10 @@ st.session_state.setdefault("burst", False)
 st.session_state.setdefault("scope_speed", 0.25)
 st.session_state.setdefault("modo_pres", False)
 st.session_state.setdefault("base", None)
+st.session_state.setdefault("bits_q", 4)
+st.session_state.setdefault("mod_sel", "BPSK")
+st.session_state.setdefault("usar_enlace", True)
+st.session_state.setdefault("ebn0_manual", 8.0)
 
 # Ventana de 1 s sin incluir el extremo: dt = 1/1000 exacto, para que la FFT
 # tenga bins de 1 Hz y el pico quede en la frecuencia verdadera.
@@ -81,7 +96,8 @@ _PLOT_MARGIN = dict(l=14, r=14, t=64, b=14)
 
 @st.cache_data(show_spinner=False)
 def _build_cached(tipo_senal, frecuencia, amplitud, frec_muestreo, burst,
-                  atenuacion_db, nivel_ruido, ancho_banda_khz, tasa_deseada_kbps, seed):
+                  atenuacion_db, nivel_ruido, ancho_banda_khz, tasa_deseada_kbps, seed,
+                  tipo_perturb=PERT_NINGUNA, intens_perturb=0):
     f = frecuencia
     A = amplitud
     fs_ = int(frec_muestreo)
@@ -106,15 +122,44 @@ def _build_cached(tipo_senal, frecuencia, amplitud, frec_muestreo, burst,
     if burst:
         m = (t % 0.8) < 0.09
         ruido_ref[m] = rng.normal(0, sigma_nom * 3.0, int(m.sum()))
-    ruido = ruido_ref * escala_b
-    senal_atenuada = senal_original * factor
-    senal_recibida = senal_atenuada + ruido
-
     a_atenuada = A * factor
+
+    # Perturbaciones adicionales (generador aparte: con «Ninguna» el AWGN no cambia).
+    inten = max(float(intens_perturb), 0.0) / 100.0
+    prng = np.random.default_rng(int(seed) + 1)
+    interf = np.zeros_like(t)
+    ganancia = np.ones_like(t)
+    f_interf = None
+    if inten > 0 and tipo_perturb == PERT_TONO:
+        # Tono ajeno a la señal: ni armónico ni múltiplo de f (la FFT tiene bins de 1 Hz).
+        f_interf = int(round(2.5 * f)) + 1
+        fase = prng.uniform(0, 2 * np.pi)
+        interf = inten * a_atenuada * np.sin(2 * np.pi * f_interf * t + fase)
+    elif inten > 0 and tipo_perturb == PERT_IMPULSO:
+        mimp = prng.random(len(t)) < P_IMPULSO
+        interf[mimp] = prng.normal(0, 3.0 * inten * a_atenuada, int(mimp.sum()))
+    elif inten > 0 and tipo_perturb == PERT_FADING:
+        # Envolvente tipo Rayleigh: ruido complejo pasa-bajos (ventana de 0,15 s), normalizada a
+        # potencia media 1 y mezclada con la ganancia constante según la profundidad.
+        w = 150
+        ker = np.ones(w) / w
+        hc = np.convolve(prng.normal(size=len(t) + w - 1), ker, "valid") \
+            + 1j * np.convolve(prng.normal(size=len(t) + w - 1), ker, "valid")
+        env = np.abs(hc)
+        env = env / np.sqrt(np.mean(env ** 2))
+        ganancia = np.clip((1.0 - inten) + inten * env, 0.0, None)
+    ruido_ref = ruido_ref + interf          # la perturbación forma parte del ruido del canal
+    ruido = ruido_ref * escala_b
+    perturb = interf * escala_b
+    senal_atenuada = senal_original * factor * ganancia
+    senal_recibida = senal_atenuada + ruido
     # Potencia media de cualquier señal 0/A o ±A con ciclo de trabajo 50 %:
     # senoidal -> A²/2 ; tren de pulsos 0/A -> A²/2 (no A² ni A²/4).
     p_tx = (A ** 2) / 2.0
     p_senal = (a_atenuada ** 2) / 2.0
+    if tipo_perturb == PERT_FADING and inten > 0:
+        p_senal = float(np.mean(senal_atenuada ** 2))
+    p_pert = float(np.mean(perturb ** 2))
     p_ruido_ref = float(np.mean(ruido_ref ** 2))   # N a B = 10 kHz
     p_ruido = float(np.mean(ruido ** 2))           # N = N₀·B a la banda elegida
     ideal = p_ruido_ref <= 0.0
@@ -162,6 +207,9 @@ def _build_cached(tipo_senal, frecuencia, amplitud, frec_muestreo, burst,
         capacidad_kbps=capacidad_kbps, r_bps=tasa_deseada_kbps * 1000,
         Ts=Ts, t_samp=t_samp, muestras=muestras,
         recon_total=recon_total, error_recon=error, condicion_nyquist=2 * f,
+        tipo_perturb=tipo_perturb, intens_perturb=intens_perturb, perturb=perturb,
+        ganancia=ganancia, f_interf=f_interf, p_pert=p_pert,
+        sir_db=(float(10 * np.log10(p_senal / p_pert)) if p_pert > 0 else float('inf')),
     )
 
 
@@ -915,6 +963,399 @@ def _fig_spectrum(P):
     return fig
 
 
+# =============================================================================
+# DIGITAL: CUANTIZACIÓN Y MODULACIÓN (error de bits)
+# =============================================================================
+_N_SIMBOLOS = 20000     # símbolos de la simulación Monte Carlo (medición del error)
+_N_PUNTOS = 700         # puntos que se dibujan en la constelación
+
+
+def _mk_mod(familia, k, pts, label):
+    """Ficha de una modulación: constelación con energía media 1 y su geometría."""
+    p = np.asarray(pts, dtype=complex)
+    p = p / np.sqrt(np.mean(np.abs(p) ** 2))
+    dist = np.abs(p[:, None] - p[None, :])
+    np.fill_diagonal(dist, np.inf)
+    dmin = float(dist.min())
+    vecinos = float(np.mean(np.sum(np.abs(dist - dmin) < 1e-9, axis=1)))
+    return dict(familia=familia, k=k, M=len(p), pts=p, dmin=dmin, nb=vecinos, label=label)
+
+
+def _cuadrada(m):
+    lv = np.arange(-(m - 1), m, 2)
+    return [a + 1j * b for a in lv for b in lv]
+
+
+def _psk(M):
+    return list(np.exp(2j * np.pi * np.arange(M) / M))
+
+
+MOD_INFO = {
+    "OOK": _mk_mod("ASK", 1, [0, 1], "OOK · ASK on-off"),
+    "4-ASK": _mk_mod("ASK", 2, [0, 1, 2, 3], "4-ASK · 4 niveles"),
+    "2-FSK": _mk_mod("FSK", 1, [1, 1j], "2-FSK · FSK binaria"),
+    "BPSK": _mk_mod("PSK", 1, [-1, 1], "BPSK · 2PSK"),
+    "DPSK": _mk_mod("DPSK", 1, [-1, 1], "DPSK · PSK diferencial"),
+    "QPSK": _mk_mod("PSK", 2, _cuadrada(2), "QPSK · 4PSK"),
+    "8-PSK": _mk_mod("PSK", 3, _psk(8), "8-PSK"),
+    "16-PSK": _mk_mod("PSK", 4, _psk(16), "16-PSK"),
+    "8-QAM": _mk_mod("QAM", 3, [a + 1j * b for a in (-3, -1, 1, 3) for b in (-1, 1)],
+                     "8-QAM · rectangular"),
+    "16-QAM": _mk_mod("QAM", 4, _cuadrada(4), "16-QAM"),
+    "32-QAM": _mk_mod("QAM", 5, [a + 1j * b for a in (-5, -3, -1, 1, 3, 5)
+                                  for b in (-5, -3, -1, 1, 3, 5) if not (abs(a) == 5 and abs(b) == 5)],
+                      "32-QAM · en cruz"),
+    "64-QAM": _mk_mod("QAM", 6, _cuadrada(8), "64-QAM"),
+}
+MODULACIONES = list(MOD_INFO)
+_CUADRADAS = ("QPSK", "16-QAM", "64-QAM")
+_APROXIMADAS = ("8-PSK", "16-PSK", "8-QAM", "32-QAM")
+_COLOR_FAMILIA = {"ASK": "#f5b04b", "FSK": "#9ea3b0", "PSK": "#8ab4f8", "DPSK": "#7ee2b8", "QAM": "#c58af9"}
+
+
+def _qfunc(x):
+    """Q(x) = P(Z > x) para Z ~ N(0,1), por la función de error complementaria."""
+    x = np.asarray(x, dtype=float)
+    return 0.5 * np.vectorize(math.erfc)(x / math.sqrt(2.0))
+
+
+def _ser_teorico(mod, g):
+    """Probabilidad teórica de error de símbolo con Eb/N0 = g (en veces).
+
+    Fórmula exacta para BPSK, OOK, 2-FSK, DPSK, ASK, QPSK y QAM cuadrada; para el resto
+    (8-PSK, 16-PSK, 8-QAM, 32-QAM) se usa la cota de vecinos más cercanos N·Q(d/2σ).
+    """
+    g = np.asarray(g, dtype=float)
+    inf = MOD_INFO[mod]
+    k = inf["k"]
+    if mod == "DPSK":
+        r = 0.5 * np.exp(-g)
+    elif mod in _CUADRADAS:
+        M = inf["M"]
+        pm = 2 * (1 - 1 / np.sqrt(M)) * _qfunc(np.sqrt(3 * k * g / (M - 1)))
+        r = 1 - (1 - pm) ** 2
+    else:
+        r = inf["nb"] * _qfunc(inf["dmin"] * np.sqrt(k * g / 2.0))
+    r = np.minimum(r, 1.0)
+    return float(r) if r.ndim == 0 else r
+
+
+def _ber_teorico(mod, g):
+    """BER teórica con Eb/N0 = g (en veces). Para M > 2 supone codificación Gray (BER ≈ SER/k)."""
+    g = np.asarray(g, dtype=float)
+    k = MOD_INFO[mod]["k"]
+    if k == 1:
+        r = np.asarray(_ser_teorico(mod, g))
+    elif mod == "QPSK":
+        r = _qfunc(np.sqrt(2.0 * g))
+    else:
+        r = np.minimum(np.asarray(_ser_teorico(mod, g)) / k, 0.5)
+    return float(r) if r.ndim == 0 else r
+
+
+def _constelacion(mod):
+    return MOD_INFO[mod]["pts"]
+
+
+def _cuantizar(x, n_bits):
+    """Cuantizador uniforme de N bits sobre el rango [mín, máx] de la señal."""
+    lo, hi = float(np.min(x)), float(np.max(x))
+    niveles = 2 ** int(n_bits)
+    if hi <= lo:
+        return x.copy(), 0.0, niveles
+    delta = (hi - lo) / niveles
+    idx = np.clip(np.floor((x - lo) / delta), 0, niveles - 1)
+    return lo + delta * (idx + 0.5), delta, niveles
+
+
+def _sqnr_db(x, xq):
+    err = x - xq
+    pe = float(np.mean(err ** 2))
+    return float("inf") if pe <= 0 else 10 * np.log10(float(np.mean(x ** 2)) / pe)
+
+
+@st.cache_data(show_spinner=False)
+def _fig_cuant(P, n_bits):
+    d = _build_cached(**P)
+    x = d["senal_original"]
+    xq, delta, niveles = _cuantizar(x, n_bits)
+    # Ventana: los primeros ciclos de la señal, para que la escalera se vea bien.
+    tmax = min(1.0, 3.0 / d["frecuencia"])
+    m = t <= tmax
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.68, 0.32],
+                        vertical_spacing=0.07)
+    fig.add_trace(go.Scatter(x=t[m], y=x[m], mode="lines", name="Señal original",
+                             line=dict(color="#7ee2b8", width=2.2)), row=1, col=1)
+    fig.add_trace(go.Scatter(x=t[m], y=xq[m], mode="lines", name=f"Cuantizada ({niveles} niveles)",
+                             line=dict(color="#f5b04b", width=2, shape="hv")), row=1, col=1)
+    fig.add_trace(go.Scatter(x=t[m], y=(x - xq)[m], mode="lines", name="Error de cuantización",
+                             line=dict(color="#e57373", width=1.6), fill="tozeroy",
+                             fillcolor="rgba(229,115,115,0.12)"), row=2, col=1)
+    fig.update_layout(
+        title="La señal cuantizada con N bits y su error", template="plotly_dark", height=420,
+        paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG, hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1, font=dict(size=11)),
+        margin=dict(_PLOT_MARGIN, t=84))
+    fig.update_xaxes(gridcolor="#2b2a2e")
+    fig.update_yaxes(gridcolor="#2b2a2e")
+    fig.update_xaxes(title_text="Tiempo (s)", row=2, col=1)
+    fig.update_yaxes(title_text="Amplitud (V)", row=1, col=1)
+    fig.update_yaxes(title_text="Error (V)", row=2, col=1)
+    return fig
+
+
+@st.cache_data(show_spinner=False)
+def _simular_modulacion(mod, g_db, seed):
+    """Monte Carlo de la modulación: devuelve los puntos recibidos y el error medido."""
+    inf = MOD_INFO[mod]
+    pts, k = inf["pts"], inf["k"]
+    rng = np.random.default_rng(seed)
+    if mod == "DPSK":
+        # Detección diferencial: el bit viaja en el cambio de fase entre símbolos consecutivos.
+        bits = rng.integers(0, 2, _N_SIMBOLOS)
+        tx = np.cumprod(np.concatenate(([1.0], 1.0 - 2.0 * bits))) + 0j
+        if not np.isfinite(g_db):
+            return dict(rx=tx[1:_N_PUNTOS + 1], ser=0.0, n=_N_SIMBOLOS)
+        sigma = math.sqrt(1.0 / (2.0 * 10 ** (g_db / 10)))
+        rx = tx + sigma * (rng.normal(size=len(tx)) + 1j * rng.normal(size=len(tx)))
+        dec = (np.real(rx[1:] * np.conj(rx[:-1])) < 0).astype(int)
+        return dict(rx=rx[1:_N_PUNTOS + 1], ser=float(np.mean(dec != bits)), n=_N_SIMBOLOS)
+    idx = rng.integers(0, len(pts), _N_SIMBOLOS)
+    tx = pts[idx]
+    if not np.isfinite(g_db):
+        return dict(rx=tx[:_N_PUNTOS], ser=0.0, n=_N_SIMBOLOS)
+    g = 10 ** (g_db / 10)
+    sigma = math.sqrt(1.0 / (2.0 * k * g))         # Es = 1 y Es/N0 = k·Eb/N0
+    rx = tx + sigma * (rng.normal(size=_N_SIMBOLOS) + 1j * rng.normal(size=_N_SIMBOLOS))
+    dec = np.argmin(np.abs(rx[:, None] - pts[None, :]), axis=1)
+    return dict(rx=rx[:_N_PUNTOS], ser=float(np.mean(dec != idx)), n=_N_SIMBOLOS)
+
+
+@st.cache_data(show_spinner=False)
+def _fig_constelacion(mod, g_db, seed):
+    sim = _simular_modulacion(mod, g_db, seed)
+    inf = MOD_INFO[mod]
+    pts = inf["pts"]
+    rx = sim["rx"]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=rx.real, y=rx.imag, mode="markers", name="Símbolos recibidos",
+                             marker=dict(color="rgba(245,176,75,0.45)", size=5)))
+    fig.add_trace(go.Scatter(x=pts.real, y=pts.imag, mode="markers", name="Constelación ideal",
+                             marker=dict(color="#7ee2b8", size=12 if inf["M"] <= 16 else 8, symbol="x",
+                                         line=dict(color="#7ee2b8", width=2))))
+    lim = 1.35 * float(np.max(np.abs(pts))) + 0.3
+    ejes = ("Componente del tono 1", "Componente del tono 2") if inf["familia"] == "FSK" \
+        else ("En fase (I)", "En cuadratura (Q)")
+    fig.update_layout(
+        title=f"Constelación {mod} recibida" + (" (detección diferencial)" if mod == "DPSK" else ""),
+        template="plotly_dark", height=380, paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG,
+        xaxis=dict(title=ejes[0], range=[-lim, lim], constrain="domain",
+                   zeroline=True, zerolinecolor="#3a3940", gridcolor="#2b2a2e"),
+        yaxis=dict(title=ejes[1], range=[-lim, lim], scaleanchor="x", scaleratio=1,
+                   constrain="domain", zeroline=True, zerolinecolor="#3a3940", gridcolor="#2b2a2e"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1, font=dict(size=11)),
+        margin=dict(_PLOT_MARGIN, t=84))
+    return fig
+
+
+@st.cache_data(show_spinner=False)
+def _fig_ber(mod, g_db):
+    gdb = np.linspace(-2, 20, 221)
+    g = 10 ** (gdb / 10)
+    fig = go.Figure()
+    for m in MODULACIONES:
+        sel = m == mod
+        fig.add_trace(go.Scatter(
+            x=gdb, y=np.maximum(_ber_teorico(m, g), 1e-9), mode="lines", name=m, showlegend=sel,
+            opacity=1.0 if sel else 0.32, hovertemplate=f"{m}: %{{y:.1e}}<extra></extra>",
+            line=dict(color=_COLOR_FAMILIA[MOD_INFO[m]["familia"]], width=3.4 if sel else 1.2)))
+    fig.add_vline(x=10 * np.log10(math.log(2)), line_dash="dash", line_color="#e57373", line_width=1.4)
+    fig.add_annotation(x=10 * np.log10(math.log(2)), y=0.04, yref="paper", xanchor="left",
+                       text="límite de Shannon (−1,59 dB)", showarrow=False, textangle=-90,
+                       font=dict(color="#e57373", size=11), bgcolor="rgba(20,18,24,0.7)")
+    if np.isfinite(g_db):
+        gx = float(np.clip(g_db, -2, 20))
+        by = float(np.maximum(_ber_teorico(mod, 10 ** (g_db / 10)), 1e-9))
+        fig.add_trace(go.Scatter(
+            x=[gx], y=[by], mode="markers", showlegend=False, hoverinfo="skip",
+            marker=dict(color="#f5b04b", size=11, line=dict(color="#141218", width=2))))
+        fig.add_annotation(x=gx, y=np.log10(by), text=f"{mod}: Eb/N0 = {g_db:.1f} dB", showarrow=True,
+                           arrowcolor="#f5b04b", ax=40, ay=-34, font=dict(color="#f5b04b", size=12),
+                           bgcolor="rgba(20,18,24,0.7)")
+    fig.update_layout(
+        title="BER según Eb/N0 (resaltada: la elegida)", template="plotly_dark",
+        height=380, paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG, hovermode="closest",
+        xaxis=dict(title="Eb/N0 (dB)", gridcolor="#2b2a2e"),
+        yaxis=dict(title="BER", type="log", range=[-6, 0], exponentformat="power", gridcolor="#2b2a2e"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1, font=dict(size=11)),
+        margin=dict(_PLOT_MARGIN, t=84))
+    return fig
+
+
+@st.cache_data(show_spinner=False)
+def _fig_portadora(mod):
+    """Portadora modulada por ocho símbolos fijos: así se ve cada técnica en el tiempo."""
+    inf = MOD_INFO[mod]
+    pts, k, M = inf["pts"], inf["k"], inf["M"]
+    n_sim, por_sim = 8, 240
+    rng = np.random.default_rng(5)
+    idx = np.array([1, 0, 1, 1, 0, 0, 1, 0]) if M == 2 else rng.integers(0, M, n_sim)
+    tau = np.arange(n_sim * por_sim) / por_sim                  # tiempo en símbolos
+    k_sim = np.minimum((tau).astype(int), n_sim - 1)
+    loc = tau - k_sim
+    if mod == "2-FSK":
+        s = np.cos(2 * np.pi * np.where(idx[k_sim] == 1, 4.0, 2.0) * loc)
+    else:
+        if mod == "DPSK":
+            c = np.cumprod(1.0 - 2.0 * idx) + 0j                # la fase cambia cuando el bit es 1
+        else:
+            c = pts[idx]
+        c = c / np.max(np.abs(c))
+        cs = c[k_sim]
+        s = cs.real * np.cos(2 * np.pi * 3 * loc) - cs.imag * np.sin(2 * np.pi * 3 * loc)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=tau, y=s, mode="lines", name="Portadora modulada",
+                             line=dict(color="#f5b04b", width=1.8)))
+    for j in range(n_sim + 1):
+        fig.add_vline(x=j, line_dash="dot", line_color="#3a3940", line_width=1)
+    for j in range(n_sim):
+        fig.add_annotation(x=j + 0.5, y=1.18, text=format(int(idx[j]), f"0{k}b"), showarrow=False,
+                           font=dict(color="#7ee2b8", size=13))
+    fig.update_layout(
+        title=("Portadora modulada: cada tramo es un símbolo (arriba, sus bits)"
+               + (" · la fase cambia cuando el bit es 1" if mod == "DPSK" else "")),
+        template="plotly_dark", height=280, paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG, showlegend=False,
+        xaxis=dict(title="Tiempo (duraciones de símbolo)", gridcolor="#2b2a2e", showgrid=False),
+        yaxis=dict(title="Amplitud", range=[-1.35, 1.35], gridcolor="#2b2a2e"),
+        margin=dict(_PLOT_MARGIN, t=60))
+    return fig
+
+
+@st.cache_data(show_spinner=False)
+def _ebn0_requerido(mod, ber_obj=1e-5):
+    """Eb/N0 (dB) con el que la BER teórica baja hasta ber_obj (bisección)."""
+    lo, hi = -5.0, 40.0
+    for _ in range(60):
+        mid = 0.5 * (lo + hi)
+        if _ber_teorico(mod, 10 ** (mid / 10)) > ber_obj:
+            lo = mid
+        else:
+            hi = mid
+    return hi
+
+
+_POS_TXT = {"BPSK": "bottom center", "DPSK": "top center", "OOK": "middle right",
+            "QPSK": "middle left", "8-PSK": "top center", "8-QAM": "bottom center"}
+
+
+@st.cache_data(show_spinner=False)
+def _fig_eficiencia(mod):
+    """Eficiencia espectral ideal (k bit/s/Hz) contra el Eb/N0 que exige cada modulación."""
+    eta = np.linspace(0.1, 7.0, 120)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=10 * np.log10((2 ** eta - 1) / eta), y=eta, mode="lines",
+                             name="Límite de Shannon", line=dict(color="#e57373", width=2.2, dash="dash")))
+    for fam in ("ASK", "PSK", "DPSK", "QAM"):
+        ms = [m for m in MODULACIONES if MOD_INFO[m]["familia"] == fam]
+        fig.add_trace(go.Scatter(
+            x=[_ebn0_requerido(m) for m in ms], y=[MOD_INFO[m]["k"] for m in ms],
+            mode="markers+text", text=ms, textposition=[_POS_TXT.get(m, "middle right") for m in ms], name=fam,
+            hovertemplate="%{text}: %{x:.1f} dB, %{y} bit/s/Hz<extra></extra>",
+            marker=dict(color=_COLOR_FAMILIA[fam], size=[16 if m == mod else 10 for m in ms]),
+            textfont=dict(color=_COLOR_FAMILIA[fam], size=12)))
+    fig.update_layout(
+        title="Cuánto cuesta cada bit por hertz (Eb/N0 necesario para BER = 10⁻⁵)", template="plotly_dark",
+        height=420, paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG,
+        xaxis=dict(title="Eb/N0 necesario (dB)", range=[-2, 30], gridcolor="#2b2a2e"),
+        yaxis=dict(title="Eficiencia espectral ideal (bit/s/Hz)", range=[0, 7], gridcolor="#2b2a2e"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1, font=dict(size=11)),
+        margin=dict(_PLOT_MARGIN, t=84))
+    return fig
+
+
+def _fmt_ber(x):
+    if x <= 0:
+        return "0"
+    return f"{x:.1e}".replace("e-0", "e-").replace("e+0", "e+")
+
+
+
+# =============================================================================
+# PERTURBACIONES ADICIONALES DEL CANAL
+# =============================================================================
+@st.cache_data(show_spinner=False)
+def _fig_pert_onda(P):
+    d = _build_cached(**P)
+    tmax = min(1.0, 4.0 / d["frecuencia"])
+    m = t <= tmax
+    fading = d["tipo_perturb"] == PERT_FADING and d["intens_perturb"] > 0
+    filas = 2 if fading else 1
+    fig = make_subplots(rows=filas, cols=1, shared_xaxes=True,
+                        row_heights=[0.7, 0.3] if fading else [1.0], vertical_spacing=0.08)
+    fig.add_trace(go.Scatter(x=t[m], y=d["senal_original"][m] * d["factor"], mode="lines",
+                             name="TX atenuada (sin perturbación)",
+                             line=dict(color="#7ee2b8", width=2, dash="dot")), row=1, col=1)
+    fig.add_trace(go.Scatter(x=t[m], y=d["senal_recibida"][m], mode="lines", name="RX recibida",
+                             line=dict(color="#f5b04b", width=1.8)), row=1, col=1)
+    if fading:
+        fig.add_trace(go.Scatter(x=t[m], y=d["ganancia"][m], mode="lines", name="Ganancia del canal",
+                                 line=dict(color="#c58af9", width=1.8), fill="tozeroy",
+                                 fillcolor="rgba(197,138,249,0.12)"), row=2, col=1)
+        fig.update_yaxes(title_text="Ganancia", row=2, col=1, gridcolor="#2b2a2e")
+    fig.update_layout(
+        title="La señal recibida con la perturbación activa", template="plotly_dark",
+        height=380 if fading else 320, paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG, hovermode="x unified",
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1, font=dict(size=11)),
+        margin=dict(_PLOT_MARGIN, t=84))
+    fig.update_xaxes(title_text="Tiempo (s)", row=filas, col=1, gridcolor="#2b2a2e")
+    fig.update_yaxes(title_text="Amplitud (V)", row=1, col=1, gridcolor="#2b2a2e")
+    return fig
+
+
+@st.cache_data(show_spinner=False)
+def _fig_pert_ruido(P):
+    d = _build_cached(**P)
+    ruido = d["ruido"]
+    frecs = _fft.rfftfreq(len(t), d=t[1] - t[0])
+    mag = np.abs(_fft.rfft(ruido)) / len(t)
+    mag[1:] *= 2
+    fmax = min(80.0, frecs[-1])
+    mk = frecs <= fmax
+    fig = make_subplots(rows=1, cols=2, subplot_titles=("Espectro del ruido total", "Distribución de las muestras"),
+                        horizontal_spacing=0.12)
+    fig.add_trace(go.Bar(x=frecs[mk], y=mag[mk], marker=dict(color="#f5b04b"), width=0.7,
+                         showlegend=False), row=1, col=1)
+    if d["f_interf"] is not None and d["f_interf"] <= fmax:
+        fig.add_vline(x=d["f_interf"], line_dash="dash", line_color="#e57373", line_width=1.4, row=1, col=1)
+        fig.add_annotation(x=d["f_interf"], y=1.0, yref="y domain", xref="x", text=f"tono {d['f_interf']} Hz",
+                           showarrow=False, xanchor="left", yanchor="top",
+                           font=dict(color="#e57373", size=11), row=1, col=1)
+    sd = float(np.std(ruido))
+    if sd > 0:
+        fig.add_trace(go.Histogram(x=ruido, histnorm="probability density", nbinsx=60,
+                                   marker=dict(color="rgba(245,176,75,0.55)"), showlegend=False),
+                      row=1, col=2)
+        xs = np.linspace(ruido.min(), ruido.max(), 200)
+        fig.add_trace(go.Scatter(x=xs, y=np.exp(-(xs - np.mean(ruido)) ** 2 / (2 * sd * sd)) / (sd * np.sqrt(2 * np.pi)),
+                                 mode="lines", name="Gaussiana de igual potencia",
+                                 line=dict(color="#8ab4f8", width=2, dash="dash")), row=1, col=2)
+    fig.update_xaxes(title_text="Frecuencia (Hz)", row=1, col=1, gridcolor="#2b2a2e")
+    fig.update_yaxes(title_text="Amplitud (V)", row=1, col=1, gridcolor="#2b2a2e")
+    fig.update_xaxes(title_text="Valor del ruido (V)", row=1, col=2, gridcolor="#2b2a2e")
+    fig.update_yaxes(title_text="Densidad", row=1, col=2, gridcolor="#2b2a2e")
+    fig.update_layout(template="plotly_dark", height=340, paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG,
+                      legend=dict(orientation="h", yanchor="bottom", y=1.08, xanchor="right", x=1,
+                                  font=dict(size=11)),
+                      margin=dict(_PLOT_MARGIN, t=70))
+    return fig
+
+
+def _curtosis(x):
+    """Curtosis (4.º momento normalizado): 3 para una gaussiana, mayor si hay picos."""
+    x = np.asarray(x, dtype=float)
+    sd = float(np.std(x))
+    return float("nan") if sd <= 0 else float(np.mean((x - np.mean(x)) ** 4) / sd ** 4)
+
 
 # Casos listos para la defensa: cada uno parte de los valores por defecto y cambia
 # solo lo indicado (burst y seed incluidos).
@@ -927,6 +1368,9 @@ CASOS = {
     "6 · Ráfaga de ruido": dict(burst=True, nivel_ruido=1.0),
     "7 · Tasa mayor que C (abrir banda)": dict(tasa_deseada_kbps=100),
     "8 · Canal ideal": dict(nivel_ruido=0.0),
+    "9 · Interferencia de tono": dict(tipo_perturb=PERT_TONO, intens_perturb=60),
+    "10 · Ruido impulsivo": dict(tipo_perturb=PERT_IMPULSO, intens_perturb=60),
+    "11 · Desvanecimiento": dict(tipo_perturb=PERT_FADING, intens_perturb=90),
 }
 
 
@@ -966,7 +1410,8 @@ def _csv_resultados(d):
         ("tipo_senal", d["tipo"], ""), ("frecuencia", d["frecuencia"], "Hz"),
         ("amplitud", d["amplitud"], "V"), ("atenuacion", sess["atenuacion_db"], "dB"),
         ("sigma_a_10kHz", d["sigma_nom"], "V"), ("sigma_efectivo", d["sigma"], "V"),
-        ("rafaga", d["burst"], ""), ("ancho_banda", d["ancho_banda_khz"], "kHz"),
+        ("rafaga", d["burst"], ""), ("perturbacion", d["tipo_perturb"], ""),
+        ("intensidad_perturbacion", d["intens_perturb"], "%"), ("ancho_banda", d["ancho_banda_khz"], "kHz"),
         ("tasa_requerida", d["tasa_deseada_kbps"], "kbps"), ("frec_muestreo", d["fs"], "Hz"),
         ("seed", sess["seed"], ""),
         ("potencia_tx", d["potencia_tx"], "W"), ("potencia_rx", d["potencia_senal"], "W"),
@@ -1025,6 +1470,7 @@ elif _PRESET == "burst_off":
 elif _PRESET == "ideal":
     st.session_state["burst"] = False
     st.session_state["nivel_ruido"] = 0.0
+    st.session_state["tipo_perturb"] = PERT_NINGUNA
     st.toast("Canal ideal: sin ruido (σ = 0). La RX replica la TX.", icon="😇")
 elif _PRESET == "reseed":
     st.session_state["seed"] = int(np.random.default_rng().integers(1, 1_000_000))
@@ -1070,6 +1516,8 @@ _PARAMS = dict(
     ancho_banda_khz=st.session_state["ancho_banda_khz"],
     tasa_deseada_kbps=st.session_state["tasa_deseada_kbps"],
     seed=st.session_state["seed"],
+    tipo_perturb=st.session_state["tipo_perturb"],
+    intens_perturb=st.session_state["intens_perturb"],
 )
 d0 = _build_cached(**_PARAMS)
 
@@ -1102,6 +1550,12 @@ with st.sidebar:
     st.slider("Ruido σ a 10 kHz (V)", min_value=0.0, max_value=5.0, step=0.1, key="nivel_ruido",
               help="Desvío del ruido en la banda de referencia (10 kHz). Con otro ancho de banda el ruido "
                    "efectivo escala como σ·√(B/10): más banda, más ruido, menos SNR.")
+    st.selectbox("Perturbación adicional", TIPOS_PERT, key="tipo_perturb",
+                 help="Se suma al ruido gaussiano (tono, impulsos) o modula la señal (desvanecimiento).")
+    st.slider("Intensidad de la perturbación (%)", min_value=0, max_value=100, step=5, key="intens_perturb",
+              disabled=st.session_state["tipo_perturb"] == PERT_NINGUNA,
+              help="Tono: amplitud como % de la señal recibida. Impulsos: tamaño de los picos. "
+                   "Desvanecimiento: profundidad de las caídas.")
 
     _sb_title("Enlace")
     st.slider("Ancho de banda B (kHz)", min_value=1, max_value=100, step=1, key="ancho_banda_khz")
@@ -1179,6 +1633,8 @@ with c2:
                 f"SNR {_fmt_db(_snr)}",
                 [("Atenuación", f"{st.session_state['atenuacion_db']:.1f} dB"),
                  ("Ruido σ ef.", f"{d0['sigma']:.2f} V" + (" · ráfaga" if d0["burst"] else ""))]
+                + ([("Perturbación", f"{d0['tipo_perturb']} {d0['intens_perturb']} %")]
+                   if d0["tipo_perturb"] != PERT_NINGUNA and d0["intens_perturb"] > 0 else [])
                 + ([("Δ SNR vs base", _delta_html(d0["snr_db"], _B["snr_db"], "dB"))] if _B else []),
                 valor_color=_snr_color(_snr))
 with a2:
@@ -1192,8 +1648,8 @@ with c3:
 
 st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
 
-tab_senal, tab_canal, tab_muestreo, tab_shannon = st.tabs(
-    ["🎼 Señal", "🌊 Canal", "🎯 Muestreo", "⚖️ Shannon"])
+tab_senal, tab_canal, tab_muestreo, tab_shannon, tab_digital = st.tabs(
+    ["🎼 Señal", "🌊 Canal", "🎯 Muestreo", "⚖️ Shannon", "🔢 Digital"])
 
 # ---------------- PESTAÑA 1: SEÑAL ----------------
 with tab_senal:
@@ -1218,6 +1674,10 @@ with tab_senal:
                "de la del modelo (seed de Python). Por eso el SNR instantáneo del recuadro puede diferir "
                "un poco del que muestra la tarjeta del canal; es el mismo proceso AWGN con muestras "
                "distintas, no un error.")
+    if d0["tipo_perturb"] != PERT_NINGUNA and d0["intens_perturb"] > 0:
+        _callout("ojo", "Perturbación activa fuera del osciloscopio",
+                 f"«{d0['tipo_perturb']}» está en el canal, pero el osciloscopio solo dibuja el AWGN y la ráfaga. "
+                 "Para verla, abrí Canal › Otras perturbaciones; el SNR de las tarjetas ya la incluye.")
     _callout("proba", "Interacción entre pestañas",
              "Al incrementar σ (ruido) o la atenuación en los Ajustes del sistema, la curva RX se vuelve "
              "irregular y el SNR instantáneo (arriba a la derecha) desciende y cambia de color.")
@@ -1302,6 +1762,55 @@ with tab_canal:
         _callout("ojo", "SNR negativo",
                  "El ruido supera a la señal: este enlace es prácticamente inservible para transportar "
                  "información.")
+
+    _section("Otras perturbaciones del canal", "🧨")
+    pert_on = d0["tipo_perturb"] != PERT_NINGUNA and d0["intens_perturb"] > 0
+    if not pert_on:
+        _callout("concepto", "Hoy el canal solo tiene AWGN",
+                 "Elegí «Perturbación adicional» en los Ajustes del sistema (o cargá los casos 9, 10 u 11) "
+                 "para sumar una interferencia de tono, ruido impulsivo o desvanecimiento, y ver cómo cambian "
+                 "el espectro, la forma de onda y el SNR.")
+    else:
+        pc1, pc2, pc3, pc4 = st.columns(4)
+        with pc1:
+            _chip("🧨", "Perturbación", f"{d0['tipo_perturb']}", "#e57373")
+        with pc2:
+            _chip("🎚️", "Intensidad", f"{d0['intens_perturb']} %", "#f5b04b")
+        if d0["tipo_perturb"] == PERT_FADING:
+            g = d0["ganancia"]
+            with pc3:
+                _chip("📉", "Ganancia mínima", f"{g.min():.2f}×  ({20 * np.log10(max(g.min(), 1e-3)):.1f} dB)", "#c58af9")
+            with pc4:
+                _chip("⏱️", "Tiempo con ganancia < 0,5×", f"{100 * float(np.mean(g < 0.5)):.0f} %", "#c58af9")
+        else:
+            with pc3:
+                _chip("⚡", "Potencia de la perturbación", f"{d0['p_pert']:.3f} W", "#f5b04b")
+            with pc4:
+                _chip("📏", "Señal/interferencia (SIR)", _fmt_db(d0["sir_db"]), _snr_color(d0["sir_db"]))
+        st.plotly_chart(_fig_pert_onda(_PARAMS), width="stretch")
+        if d0["tipo_perturb"] != PERT_FADING:
+            st.plotly_chart(_fig_pert_ruido(_PARAMS), width="stretch")
+        if d0["tipo_perturb"] == PERT_TONO:
+            _callout("concepto", "Una línea en el espectro",
+                     f"El tono se ve como un pico aislado en {d0['f_interf']} Hz, fuera de la señal "
+                     f"({d0['frecuencia']} Hz) y de sus armónicos. A diferencia del AWGN, que reparte su "
+                     "potencia en todas las frecuencias, una interferencia estrecha puede filtrarse: "
+                     "con un filtro angosto en esa frecuencia el SNR se recupera casi por completo.")
+        elif d0["tipo_perturb"] == PERT_IMPULSO:
+            _callout("concepto", "Pocos picos, mucha potencia",
+                     f"El {100 * P_IMPULSO:.0f} % de las muestras recibe un impulso grande. El histograma tiene "
+                     f"colas más pesadas que la gaussiana (curtosis {_curtosis(d0['ruido']):.1f}; una gaussiana da 3) "
+                     "y el ruido es casi plano en frecuencia. Un filtro de mediana o un recorte de picos "
+                     "funcionan mejor que un filtro lineal.")
+        else:
+            _callout("concepto", "El canal cambia con el tiempo",
+                     "El desvanecimiento no suma ruido: multiplica la señal por una ganancia que sube y baja, "
+                     "como cuando hay varios caminos de propagación (multicamino). En las caídas profundas la "
+                     "señal queda enterrada en el ruido aunque el SNR promedio parezca aceptable.")
+        _caption("El SNR de las tarjetas y la capacidad de Shannon usan la potencia total del ruido, "
+                 "perturbación incluida, y la tratan como parte de N = N₀·B (se escala con el ancho de banda "
+                 "para mantener un único modelo). A potencia dada, el ruido gaussiano es el peor caso para la "
+                 "capacidad, de modo que C es una estimación conservadora.")
 
 # ---------------- PESTAÑA 3: MUESTREO ----------------
 with tab_muestreo:
@@ -1498,6 +2007,153 @@ with tab_shannon:
                  "pero cada kHz adicional rinde menos (es cóncava, no lineal). La línea roja punteada es "
                  f"la tasa requerida y la vertical verde, el B mínimo que la sostiene. {texto_b}")
 
+# ---------------- PESTAÑA 5: DIGITAL ----------------
+with tab_digital:
+    _intro("🔢 Digital",
+           "Pasar la señal a bits y mandarlos por el canal.",
+           "Dos pasos más para completar el enlace: <b>cuantizar</b> cada muestra con un número finito de bits "
+           "y <b>modulación digital</b>, donde se mide con qué frecuencia el ruido hace que un bit llegue mal "
+           "(BER). El Eb/N0 del enlace sale de los mismos ajustes del sistema: Eb/N0 = SNR · B / R.")
+
+    # ---- Cuantización ----
+    _section("Cuantización: cuántos bits por muestra", "🪜")
+    st.slider("Bits por muestra (N)", min_value=1, max_value=12, step=1, key="bits_q",
+              help="Con N bits hay 2^N niveles. Más bits: escalera más fina y menos error, pero más bits por segundo.")
+    nb = st.session_state["bits_q"]
+    xq_, delta_, niveles_ = _cuantizar(d0["senal_original"], nb)
+    sqnr_ = _sqnr_db(d0["senal_original"], xq_)
+    q1, q2, q3, q4 = st.columns(4)
+    with q1:
+        _chip("🪜", "Niveles (2^N)", f"{niveles_}", "#8ab4f8")
+    with q2:
+        _chip("📏", "Paso Δ", f"{delta_:.4f} V" if delta_ > 0 else "—", "#f5b04b")
+    with q3:
+        _chip("📐", "SQNR medida", _fmt_db(sqnr_), "#7ee2b8")
+    with q4:
+        _chip("💾", "Bits por segundo (N·fs)", f"{nb * d0['fs']} bps", "#c4c7d1")
+    st.plotly_chart(_fig_cuant(_PARAMS, nb), width="stretch")
+    if d0["senoidal"]:
+        _callout("concepto", "La regla de los 6 dB por bit",
+                 f"Para una senoidal que usa todo el rango, la relación señal/ruido de cuantización (SQNR) "
+                 f"es ≈ 6,02·N + 1,76 dB. Con N = {nb} da ≈ {6.02 * nb + 1.76:.1f} dB; el simulador mide "
+                 f"{_fmt_db(sqnr_)}. Cada bit extra reduce el paso a la mitad y gana unos 6 dB.")
+    else:
+        _callout("porque", "Por qué el pulso se comporta distinto",
+                 "El tren de pulsos 0/A solo toma dos valores, así que su error no sigue la regla de 6 dB "
+                 "por bit de una senoidal: depende de dónde caen los dos valores respecto de los niveles. "
+                 "Cambiá a «Onda Senoidal» para ver la relación clásica.")
+    _caption("Se cuantiza la señal original (antes del canal) con un cuantizador uniforme sobre el rango "
+             "[mínimo, máximo] de la señal. «Bits por segundo» es N·fs con fs en Hz: las escalas del "
+             "muestreo (Hz) y del canal (kHz) son independientes en este simulador.")
+
+    # ---- Modulación y BER ----
+    _section("Modulación digital: moduladora digital, portadora analógica", "📡")
+    _caption("Los bits (moduladora digital) cambian una propiedad de una portadora analógica: su amplitud "
+             "(ASK/OOK), su frecuencia (FSK), su fase (PSK/DPSK) o amplitud y fase a la vez (QAM).")
+    mc1, mc2, mc3 = st.columns([2, 2, 3])
+    with mc1:
+        st.selectbox("Modulación", MODULACIONES, key="mod_sel", format_func=lambda m: MOD_INFO[m]["label"])
+    with mc2:
+        st.toggle("Usar el Eb/N0 del enlace", key="usar_enlace",
+                  help="Eb/N0 = SNR · B / R con los valores de los Ajustes del sistema.")
+    with mc3:
+        st.slider("Eb/N0 manual (dB)", min_value=-2.0, max_value=20.0, step=0.5, key="ebn0_manual",
+                  disabled=st.session_state["usar_enlace"])
+    mod = st.session_state["mod_sel"]
+    minfo = MOD_INFO[mod]
+    if st.session_state["usar_enlace"]:
+        g_veces = d0["snr_veces"] * d0["ancho_banda_khz"] / d0["tasa_deseada_kbps"]
+        g_db = 10 * np.log10(g_veces) if np.isfinite(g_veces) else float("inf")
+    else:
+        g_db = float(st.session_state["ebn0_manual"])
+        g_veces = 10 ** (g_db / 10)
+    g_arg = g_db if np.isfinite(g_db) else float("inf")
+    ber_t = 0.0 if not np.isfinite(g_db) else float(_ber_teorico(mod, g_veces))
+    ser_t = 0.0 if not np.isfinite(g_db) else float(_ser_teorico(mod, g_veces))
+    sim = _simular_modulacion(mod, g_arg, st.session_state["seed"])
+    ser_m = sim["ser"]
+
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        _chip("🎚️", "Eb/N0", _fmt_db(g_db), _snr_color(g_db if np.isfinite(g_db) else 99))
+    with k2:
+        _chip("🎯", "BER teórica", _fmt_ber(ber_t), "#8ab4f8")
+    with k3:
+        _chip("🧮", "Error de símbolo teórico", _fmt_ber(ser_t), "#f5b04b")
+    with k4:
+        _chip("🎲", f"Error de símbolo medido ({sim['n']:,} símbolos)".replace(",", "."),
+              _fmt_ber(ser_m) if ser_m > 0 else f"0 (< {_fmt_ber(1 / sim['n'])})", "#7ee2b8")
+    h1, h2, h3 = st.columns(3)
+    with h1:
+        _chip("🔢", "Bits por símbolo (k)", f"{minfo['k']}", "#c4c7d1")
+    with h2:
+        _chip("🔘", "Puntos de la constelación (M)", f"{minfo['M']}", "#c4c7d1")
+    with h3:
+        _chip("📶", "Eficiencia espectral ideal",
+              "—" if minfo["familia"] == "FSK" else f"{minfo['k']} bit/s/Hz", "#c4c7d1")
+
+    st.plotly_chart(_fig_portadora(mod), width="stretch")
+    vc_a, vc_b = st.columns(2)
+    with vc_a:
+        st.plotly_chart(_fig_constelacion(mod, g_arg, st.session_state["seed"]), width="stretch")
+    with vc_b:
+        st.plotly_chart(_fig_ber(mod, g_arg), width="stretch")
+
+    _TEXTO_FAMILIA = {
+        "ASK": ("ASK: los datos cambian la amplitud de la portadora. OOK (on-off) es el caso binario: "
+                "portadora presente = 1, ausente = 0. Es simple, pero como la información está en la "
+                "amplitud, el ruido y el desvanecimiento la afectan mucho. Con 4 niveles se mandan 2 bits "
+                "por símbolo, a costa de niveles más juntos."),
+        "FSK": ("FSK: los datos cambian la frecuencia de la portadora (acá, dos tonos). La amplitud es "
+                "constante, por eso tolera bien amplificadores no lineales y el desvanecimiento, pero ocupa "
+                "más ancho de banda: su eficiencia espectral depende de la separación entre tonos y por eso "
+                "no se grafica."),
+        "PSK": ("PSK: los datos cambian la fase de la portadora. BPSK usa dos fases (0° y 180°) y es la más "
+                "robusta con un bit por símbolo. QPSK, 8-PSK y 16-PSK usan 4, 8 y 16 fases: más bits por "
+                "símbolo, pero fases más próximas y más Eb/N0 para la misma BER."),
+        "DPSK": ("DPSK: el bit se codifica en el cambio de fase respecto del símbolo anterior, así que el "
+                 "receptor no necesita recuperar la fase absoluta de la portadora (detección diferencial). "
+                 "El costo es algo más de error que BPSK: Pb = ½·e^(−Eb/N0)."),
+        "QAM": ("QAM: combina amplitud y fase (dos portadoras en cuadratura, I y Q). 16-QAM manda 4 bits por "
+                "símbolo y 64-QAM, 6. Cuantos más puntos, más eficiencia espectral y más sensibilidad al "
+                "ruido: hace falta más Eb/N0 para la misma BER."),
+    }
+    _callout("concepto", f"Qué es {mod}", _TEXTO_FAMILIA[minfo["familia"]])
+
+    _section("Cuánto cuesta cada bit por hertz", "💱")
+    st.plotly_chart(_fig_eficiencia(mod), width="stretch")
+    _callout("proba", "Cómo se conecta con Shannon",
+             "Cada punto es una modulación: a la derecha, más Eb/N0 para llegar a BER = 10⁻⁵; arriba, más bits "
+             "por segundo y por hertz. Ninguna puede quedar a la izquierda de la línea roja (límite de Shannon). "
+             f"Subir de BPSK a 64-QAM multiplica por seis los bits por hertz, pero exige unos "
+             f"{_ebn0_requerido('64-QAM') - _ebn0_requerido('BPSK'):.0f} dB más de Eb/N0.")
+    _caption("Para M > 2 la BER teórica supone codificación Gray (BER ≈ error de símbolo / k). En 8-PSK, "
+             "16-PSK, 8-QAM y 32-QAM el error de símbolo usa la cota de vecinos más cercanos, una "
+             "aproximación buena con errores bajos. 8-QAM es rectangular (4×2) y 32-QAM tiene forma de cruz. "
+             "En OOK, la energía por bit se toma sobre la potencia media.")
+
+    if not np.isfinite(g_db):
+        _callout("concepto", "Canal ideal: sin ruido no hay errores",
+                 "Con σ = 0 los símbolos recibidos caen exactamente sobre la constelación y la BER es 0.")
+    elif g_db < 10 * np.log10(math.log(2)):
+        _callout("ojo", "Por debajo del límite de Shannon",
+                 f"Eb/N0 = {g_db:.1f} dB es menor que −1,59 dB: ningún código ni modulación permite "
+                 "comunicar sin errores en estas condiciones.")
+    else:
+        _callout("porque", "Cómo leer la constelación y la curva",
+                 "En la constelación, cada punto naranja es un símbolo recibido: el ruido lo desplaza de su punto "
+                 "ideal (verde), y si cae más cerca de otro punto, el receptor decide mal. En la curva, la BER cae al "
+                 "subir Eb/N0; las modulaciones con más puntos mandan más bits por símbolo pero necesitan más Eb/N0.")
+    if d0["tipo_perturb"] != PERT_NINGUNA and d0["intens_perturb"] > 0 and st.session_state["usar_enlace"]:
+        _callout("ojo", "Las fórmulas de BER suponen AWGN",
+                 f"Con «{d0['tipo_perturb']}» activo, el Eb/N0 del enlace incluye la perturbación como si fuera "
+                 "ruido gaussiano. Es una aproximación: los impulsos y los desvanecimientos producen errores "
+                 "agrupados que las curvas teóricas no capturan.")
+    _callout("concepto", "Conexión con Shannon",
+             "Eb/N0 = SNR·B/R relaciona esta pestaña con las anteriores: si se sube la tasa R o se abre la "
+             "banda B, cambia el Eb/N0 y con él la BER. El límite de Shannon (línea roja) es "
+             "Eb/N0 = ln 2 ≈ −1,59 dB: ninguna modulación puede cruzarlo.")
+
 # =============================================================================
 # GUÍA DE LECTURA
 # =============================================================================
@@ -1523,7 +2179,7 @@ with st.expander("📖 Guía de lectura — cómo leer este simulador"):
                "El osciloscopio corre en el navegador: la curva verde es la TX y la naranja la RX. La "
                "serie de Fourier se reproduce sola y muestra el contenido armónico de la onda.")
         _guide("🌊", "Canal",
-               "Tarjetas de estado del enlace y el histograma del ruido AWGN respirando alrededor de su "
+               "Tarjetas de estado del enlace, el histograma del ruido AWGN respirando alrededor de su "
                "curva teórica. La ráfaga, el canal ideal y la nueva realización del ruido se activan desde «Escenarios» "
                "en el panel lateral.")
     with gg2:
@@ -1535,6 +2191,9 @@ with st.expander("📖 Guía de lectura — cómo leer este simulador"):
         _guide("⚖️", "Shannon",
                "C = B·log₂(1+SNR) con los valores del sistema. El veredicto verde/rojo compara la tasa requerida "
                "contra el tope físico, y el gráfico señala el B mínimo que lo sustenta.")
+        _guide("🔢", "Digital",
+               "Cuantización con N bits (regla de 6 dB por bit) y modulación digital (OOK, ASK, FSK, PSK, DPSK, "
+               "QPSK, 8/16-PSK y 8/16/32/64-QAM): portadora, constelación recibida y curva de BER según Eb/N0 = SNR·B/R.")
 
     st.markdown(
         "<div style='color:#8ab4f8;font-size:13px;font-weight:600;margin:14px 0 6px;'>Ideas para presentar el concepto</div>",
@@ -1545,6 +2204,7 @@ with st.expander("📖 Guía de lectura — cómo leer este simulador"):
         "• Al bajar fs a 2f o menos, la reconstrucción se desvía: el error rojo es el aliasing.<br>"
         "• En Shannon, al exigir una R alta se observa el B mínimo necesario en la línea verde.<br>"
         "• Los botones de «Escenarios» y los «Casos para la presentación» (panel lateral) reconfiguran el sistema con un clic.<br>"
+        "• En Digital, subir los bits mejora la SQNR unos 6 dB por bit y subir Eb/N0 baja la BER.<br>"
         "• «Fijar como base» guarda el estado actual: después las tarjetas muestran cuánto cambian SNR, C y error.<br>"
         "• El «Modo presentación» oculta las explicaciones largas y deja gráficos, números y avisos.</div>",
         unsafe_allow_html=True)
