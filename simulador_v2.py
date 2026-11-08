@@ -472,12 +472,12 @@ _CANVAS_CSS = """
            border: 1px solid #2b2a2e; }
   .cbar { display: flex; align-items: center; gap: 9px; padding: 8px 13px;
           border-bottom: 1px solid rgba(230, 224, 233, .07); }
-  .ctag { font-size: 9.5px; letter-spacing: .16em; font-weight: 700;
+  .ctag { font-size: 10px; letter-spacing: .16em; font-weight: 700;
           color: #c4c7d1; text-transform: uppercase; white-space: nowrap; }
-  .cmeta { font-size: 11px; color: #9ea3b0; white-space: nowrap; overflow: hidden;
+  .cmeta { font-size: 11.5px; color: #9ea3b0; white-space: nowrap; overflow: hidden;
            text-overflow: ellipsis; }
   .cval { margin-left: auto; font-family: 'Roboto Mono', ui-monospace, monospace;
-          font-size: 11px; color: #9ea3b0; background: rgba(255, 255, 255, .045);
+          font-size: 11.5px; color: #9ea3b0; background: rgba(255, 255, 255, .045);
           border: 1px solid rgba(255, 255, 255, .05); border-radius: 999px;
           padding: 2px 9px; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .clive { width: 6px; height: 6px; border-radius: 50%; background: #7ee2b8;
@@ -498,8 +498,8 @@ __CSS__
     <span class="clive"></span>
     <span class="ctag">Osciloscopio</span>
     <span class="cmeta">repaso ×__SPEED__<span id="burstNote"></span></span>
-    <span class="lgd"><i style="background:#7ee2b8;"></i><span style="font-size:10.5px;color:#9ea3b0;">TX</span></span>
-    <span class="lgd"><i style="background:#f5b04b;"></i><span style="font-size:10.5px;color:#9ea3b0;">RX</span></span>
+    <span class="lgd"><i style="background:#7ee2b8;"></i><span style="font-size:11px;color:#9ea3b0;">TX</span></span>
+    <span class="lgd"><i style="background:#f5b04b;"></i><span style="font-size:11px;color:#9ea3b0;">RX</span></span>
     <span class="cval" id="snrBadge"></span>
   </div>
   <canvas id="scope" style="height:252px;"></canvas>
@@ -1844,7 +1844,7 @@ with tab_senal:
                     "Una senoidal es una línea; un pulso reparte su energía en armónicos impares.")
         st.plotly_chart(_fig_spectrum(_PARAMS), width="stretch")
         st.markdown(
-            "<div style='color:#9ea3b0;font-size:12.5px;'>La senoidal concentra toda su energía en una "
+            "<div style='color:#9ea3b0;font-size:13.5px;'>La senoidal concentra toda su energía en una "
             "única línea espectral. El pulso, en cambio, la reparte en armónicos impares hasta el "
             "infinito: un canal finito no puede transportarlo sin deformación.</div>",
             unsafe_allow_html=True)
@@ -2334,7 +2334,7 @@ with tab_digital:
 # =============================================================================
 with st.expander("📖 Guía de lectura — cómo leer este simulador"):
     st.markdown(
-        "<div style='color:#c4c7d1;font-size:13px;margin-bottom:12px;'>Una idea por pestaña, ordenadas "
+        "<div style='color:#c4c7d1;font-size:14px;margin-bottom:12px;'>Una idea por pestaña, ordenadas "
         "según el flujo físico del enlace: se genera la señal, se degrada en el canal, se muestrea y se "
         "mide su límite de información. En el resumen de arriba, <b style='color:#7ee2b8'>TX</b> transmite la "
         "señal, el <b style='color:#c4c7d1'>CANAL</b> la atenúa y le agrega ruido gaussiano (AWGN) y "
@@ -2369,10 +2369,10 @@ with st.expander("📖 Guía de lectura — cómo leer este simulador"):
                "QPSK, 8/16-PSK y 8/16/32/64-QAM): portadora, constelación recibida y curva de BER según Eb/N0 = SNR·B/R.")
 
     st.markdown(
-        "<div style='color:#8ab4f8;font-size:13px;font-weight:600;margin:14px 0 6px;'>Ideas para presentar el concepto</div>",
+        "<div style='color:#8ab4f8;font-size:14px;font-weight:600;margin:14px 0 6px;'>Ideas para presentar el concepto</div>",
         unsafe_allow_html=True)
     st.markdown(
-        "<div style='color:#c4c7d1;font-size:12.5px;line-height:1.7;'>"
+        "<div style='color:#c4c7d1;font-size:13.5px;line-height:1.7;'>"
         "• Al subir el ruido, el SNR cae y la capacidad C baja: menos datos caben en un canal deteriorado.<br>"
         "• Al bajar fs a 2f o menos, la reconstrucción se desvía: el error rojo es el aliasing.<br>"
         "• En Shannon, al exigir una R alta se observa el B mínimo necesario en la línea verde.<br>"

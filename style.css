@@ -962,6 +962,71 @@ div.stButton > button:active, div.stDownloadButton > button:active {
   .stApp::before { animation: haloDrift 22s ease-in-out infinite alternate; }
 }
 
+/* ---------- Legibilidad: un poco más de tamaño ---------- */
+.hero h1 { font-size: 1.82rem; }
+.hero .sub { font-size: 13.5px; }
+.hero .kicker { font-size: 11px; }
+.hbadge { font-size: 12.2px; }
+
+.cc-val { font-size: 19px; }
+.cc-row { font-size: 12.2px; }
+.cc-v { font-size: 11.4px; }
+.cc-tag { font-size: 10px; }
+
+.stTabs [data-testid="stTab"] { font-size: 13.2px; }
+.stTabs [data-testid="stTab"] p { font-size: 13.2px !important; }
+
+.intro .kick { font-size: 11px; }
+.intro h3 { font-size: 18px; }
+.intro p { font-size: 14px; }
+
+.sec-lab { font-size: 11.5px; }
+.ch-t { font-size: 14px; }
+.ch-n { font-size: 12.5px; }
+.ch-r { font-size: 11.8px; }
+.lg { font-size: 12.2px; }
+
+.card-t { font-size: 10.5px; }
+.card-val { font-size: 27px; }
+.card-det { font-size: 12.7px; }
+
+.chip-lab { font-size: 10.3px; }
+.chip-val { font-size: 15.2px; }
+
+.callout .co-t { font-size: 10.5px; }
+.callout .co-x { font-size: 13.5px; }
+
+.verdict .v-head { font-size: 11px; }
+.verdict .v-body { font-size: 14.4px; }
+
+.formula .f-lab { font-size: 10.3px; }
+.formula .f-val { font-size: 18px; }
+
+div[data-testid="stMetric"] label { font-size: 12.3px; }
+div[data-testid="stMetricValue"] { font-size: 1.7rem !important; }
+
+div.stButton > button, div.stDownloadButton > button { font-size: 13.2px; }
+[data-testid="stExpander"] summary { font-size: 13.2px; }
+[data-testid="stSliderThumbValue"] *, [data-testid="stSliderThumbValue"],
+[data-testid="stSliderTickBarMin"], [data-testid="stSliderTickBarMax"] {
+  font-size: 11.6px !important;
+}
+
+[data-testid="stCaptionContainer"] p { font-size: 12.2px !important; }
+[data-testid="stProgress"] p { font-size: 12.2px !important; }
+
+.sb-brand { font-size: 11px; }
+.sb-title { font-size: 10.3px; }
+section[data-testid="stSidebar"] label p { font-size: 13.1px; }
+section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p { font-size: 11.8px !important; }
+
+.gtitle { font-size: 12.8px; }
+.gtxt { font-size: 13.1px; }
+
+@media (max-width: 860px) {
+  .hero h1 { font-size: 1.5rem; }
+}
+
 /* ---------- Accesibilidad: sin movimiento ---------- */
 @media (prefers-reduced-motion: reduce) {
   .card, .card::after, .card-ico, .card-val, .chip, .chip-ico, .chain-card,
