@@ -92,6 +92,59 @@ B_REF_KHZ = 10.0
 # mínimos. El alto del margen superior se amplía solo donde hay controles.
 _PLOT_BG = "#141218"
 _PLOT_MARGIN = dict(l=14, r=14, t=64, b=14)
+_FONT = "'Roboto', 'Segoe UI', system-ui, sans-serif"
+_MONO = "'Roboto Mono', ui-monospace, Menlo, monospace"
+_GRID = "#26242a"
+
+
+def _finish(fig, height, legend=False, hovermode=None, margin=None):
+    """Cromo común de todos los gráficos: un solo lugar para márgenes, tipografía,
+    grilla y leyenda. Sin título en Plotly (lo lleva la cabecera HTML): así nunca
+    se corta ni choca con la leyenda."""
+    base = dict(l=6, r=12, t=44 if legend else 14, b=8)
+    if margin:
+        base.update(margin)
+    fig.update_layout(
+        template="plotly_dark",
+        height=height,
+        paper_bgcolor=_PLOT_BG,
+        plot_bgcolor=_PLOT_BG,
+        font=dict(family=_FONT, size=11.5, color="#9ea3b0"),
+        margin=base,
+        showlegend=legend,
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0,
+                    bgcolor="rgba(0,0,0,0)", font=dict(size=10.5, color="#9ea3b0"),
+                    itemwidth=30, itemsizing="constant"),
+        hoverlabel=dict(bgcolor="#1d1b20", bordercolor="#2b2a2e",
+                        font=dict(family=_FONT, size=11.5, color="#e6e0e9")),
+        hovermode=hovermode,
+    )
+    fig.update_xaxes(showgrid=False, zeroline=False, linecolor="#2b2a2e", ticks="outside",
+                     ticklen=3, tickcolor="rgba(0,0,0,0)", tickfont=dict(size=10.5, color="#9ea3b0"),
+                     title_font=dict(size=11, color="#8f94a1"))
+    fig.update_yaxes(gridcolor=_GRID, gridwidth=1, zeroline=False, linecolor="rgba(0,0,0,0)",
+                     ticks="", tickfont=dict(size=10.5, color="#9ea3b0"),
+                     title_font=dict(size=11, color="#8f94a1"))
+    return fig
+
+
+def _chart_head(titulo, nota=None, derecha=None):
+    """Cabecera de gráfico: título legible + nota corta + lectura a la derecha."""
+    nota_html = f"<div class='ch-n'>{nota}</div>" if nota else ""
+    der_html = f"<div class='ch-r'>{derecha}</div>" if derecha else ""
+    st.markdown(f"<div class='ch'><div><div class='ch-t'>{titulo}</div>{nota_html}</div>{der_html}</div>",
+                unsafe_allow_html=True)
+
+
+def _legend_row(items):
+    """Leyenda propia (más limpia que la de Plotly): (color, texto, tipo)."""
+    piezas = []
+    for color, texto, *resto in items:
+        tipo = resto[0] if resto else "line"
+        clase = "dot" if tipo == "dot" else "dash" if tipo == "dash" else ""
+        color_est = f"background:{color};" + (f"color:{color};" if tipo == "dash" else "")
+        piezas.append(f"<span class='lg'><i class='{clase}' style='{color_est}'></i>{texto}</span>")
+    st.markdown(f"<div class='lgrow'>{''.join(piezas)}</div>", unsafe_allow_html=True)
 
 
 @st.cache_data(show_spinner=False)
@@ -237,15 +290,12 @@ def _partials_cached(**P):
 # PIEZAS DE DISEÑO: intro, sección, callout, carta, veredicto, chip, encabezado
 # =============================================================================
 def _intro(emoji, title, text):
+    """Entrada de pestaña: una línea grande que dice qué se ve y por qué importa."""
     if st.session_state.get("modo_pres"):
         return
     st.markdown(
-        f"<div style='border-left:4px solid #8ab4f8;background:#1d1b20;border-radius:12px;"
-        f"padding:12px 16px;margin:2px 0 16px;'>"
-        f"<div style='font-size:11px;letter-spacing:.09em;color:#8ab4f8;font-weight:600;"
-        f"text-transform:uppercase;margin-bottom:3px;'>{emoji}</div>"
-        f"<div style='color:#e6e0e9;font-size:16px;font-weight:600;'>{title}</div>"
-        f"<p style='color:#c4c7d1;font-size:13px;margin:6px 0 0;line-height:1.5;'>{text}</p></div>",
+        f"<div class='intro'><div class='kick'>{emoji}</div>"
+        f"<h3>{title}</h3><p>{text}</p></div>",
         unsafe_allow_html=True,
     )
 
@@ -256,17 +306,16 @@ def _caption(texto):
 
 
 def _section(label, emoji=None):
-    if emoji:
-        st.markdown(f"<div class='psection'><span>{emoji}</span>{label}</div>", unsafe_allow_html=True)
-    else:
-        st.markdown(f"<div class='psection'>{label}</div>", unsafe_allow_html=True)
+    ico = f"<span class='sec-ico'>{emoji}</span>" if emoji else ""
+    st.markdown(f"<div class='sec'>{ico}<span class='sec-lab'>{label}</span>"
+                f"<span class='sec-line'></span></div>", unsafe_allow_html=True)
 
 
 _CALLOUT = {
-    "concepto": ("🧠", "#8ab4f8", "rgba(138,180,248,0.09)"),
-    "porque": ("❓", "#f5b04b", "rgba(245,176,75,0.09)"),
-    "ojo": ("⚠️", "#e57373", "rgba(229,115,115,0.10)"),
-    "proba": ("🧪", "#7ee2b8", "rgba(126,226,184,0.09)"),
+    "concepto": "🧠",
+    "porque": "❓",
+    "ojo": "⚠️",
+    "proba": "🧪",
 }
 
 
@@ -274,56 +323,61 @@ def _callout(tono, titulo, texto):
     # Modo presentación: se ocultan las explicaciones; los avisos de estado («ojo») se mantienen.
     if st.session_state.get("modo_pres") and tono != "ojo":
         return
-    icono, borde, fondo = _CALLOUT[tono]
     st.markdown(
-        f"<div style='display:flex;gap:10px;align-items:flex-start;"
-        f"border:1px solid {borde}40;border-left:4px solid {borde};background:{fondo};"
-        f"border-radius:12px;padding:11px 14px;margin:6px 0 18px;'>"
-        f"<span style='font-size:16px;margin-top:1px;'>{icono}</span>"
-        f"<div><div style='color:{borde};font-size:12px;font-weight:600;letter-spacing:.05em;'>{titulo.upper()}</div>"
-        f"<div style='color:#c4c7d1;font-size:13px;line-height:1.5;margin-top:3px;'>{texto}</div></div></div>",
+        f"<div class='callout t-{tono}'><span class='co-ico'>{_CALLOUT[tono]}</span>"
+        f"<div><div class='co-t'>{titulo.upper()}</div>"
+        f"<div class='co-x'>{texto}</div></div></div>",
         unsafe_allow_html=True,
     )
 
 
 def _card(icono, titulo, valor, detalle, color="#8ab4f8"):
     st.markdown(
-        f"<div style='background:#1d1b20;border:1px solid #2b2a2e;border-top:3px solid {color};"
-        f"border-radius:12px;padding:16px 18px;margin:6px 0;"
-        f"box-shadow:0 1px 2px rgba(0,0,0,.3),0 2px 8px rgba(0,0,0,.18);height:100%;'>"
-        f"<div style='display:flex;align-items:center;gap:7px;color:{color};font-size:12px;"
-        f"font-weight:600;letter-spacing:.06em;'><span style='font-size:15px;'>{icono}</span>{titulo.upper()}</div>"
-        f"<div style='font-size:28px;font-weight:600;color:#e6e0e9;margin:9px 0 6px;font-variant-numeric:tabular-nums;'>{valor}</div>"
-        f"<div style='color:#9ea3b0;font-size:12.5px;line-height:1.5;'>{detalle}</div></div>",
+        f"<div class='card' style='--accent:{color}'>"
+        f"<div class='card-head'><span class='card-ico'>{icono}</span>"
+        f"<span class='card-t'>{titulo.upper()}</span></div>"
+        f"<div class='card-val'>{valor}</div>"
+        f"<div class='card-det'>{detalle}</div></div>",
         unsafe_allow_html=True,
     )
 
 
 def _chip(icono, etiqueta, valor, color="#9ea3b0"):
     st.markdown(
-        f"<div style='background:#1d1b20;border:1px solid #2b2a2e;border-radius:12px;padding:9px 13px;"
-        f"display:flex;align-items:center;gap:10px;height:100%;'>"
-        f"<span style='font-size:17px;'>{icono}</span>"
-        f"<div><div style='color:#9ea3b0;font-size:11px;letter-spacing:.05em;'>{etiqueta.upper()}</div>"
-        f"<div style='color:{color};font-size:16px;font-weight:600;font-variant-numeric:tabular-nums;'>{valor}</div></div></div>",
+        f"<div class='chip' style='--line:{color}'>"
+        f"<span class='chip-ico'>{icono}</span>"
+        f"<div class='chip-body'><div class='chip-lab'>{etiqueta.upper()}</div>"
+        f"<div class='chip-val' style='color:{color}'>{valor}</div></div></div>",
         unsafe_allow_html=True,
     )
 
 
 def _verdict(ok, titulo, cuerpo):
-    c = "#7ee2b8" if ok else "#e57373"
-    bg = "rgba(126,226,184,0.10)" if ok else "rgba(229,115,115,0.12)"
-    emoji = "🟢" if ok else "🔴"
+    clase = "ok" if ok else "bad"
+    icono = "✓" if ok else "✕"
     st.markdown(
-        f"<div style='border:1px solid {c}55;background:{bg};border-radius:12px;padding:14px 18px;margin:4px 0 14px;'>"
-        f"<div style='color:{c};font-size:12px;font-weight:700;letter-spacing:.05em;'>{emoji} {titulo.upper()}</div>"
-        f"<div style='color:#e6e0e9;font-size:15px;margin-top:4px;'>{cuerpo}</div></div>",
+        f"<div class='verdict {clase}'>"
+        f"<div class='v-head'>{icono} {titulo.upper()}</div>"
+        f"<div class='v-body'>{cuerpo}</div></div>",
         unsafe_allow_html=True,
     )
 
 
 def _snr_color(snr):
     return "#7ee2b8" if snr >= 15 else "#f5b04b" if snr > 0 else "#e57373"
+
+
+def _nyq_badge(d):
+    """Insignia del hero: ¿se cumple Nyquist con la fs actual?"""
+    f, fs_ = d["frecuencia"], d["fs"]
+    ratio = fs_ / max(2 * f, 1)
+    if d["senoidal"] and fs_ > 2 * f:
+        return "ok", f"Nyquist ✓ · fs/2f = {ratio:.2f}"
+    if d["senoidal"] and fs_ == 2 * f:
+        return "bad", f"fs = 2f exacto · muestras en cero"
+    if d["senoidal"]:
+        return "bad", f"Aliasing · fs/2f = {ratio:.2f}"
+    return "warn", f"Pulso · fs/2f = {ratio:.2f}"
 
 
 def _fmt_db(x):
@@ -344,43 +398,40 @@ def _fmt_veces(x):
 
 def _chain_card(tag, icono, color, valor, filas, valor_color=None):
     rows = "".join(
-        f"<div style='display:flex;justify-content:space-between;gap:10px;font-size:13px;'>"
-        f"<span style='color:#9ea3b0;'>{k}</span><span style='color:#e6e0e9;font-variant-numeric:tabular-nums;'>{v}</span></div>"
+        f"<div class='cc-row'><span class='cc-k'>{k}</span>"
+        f"<span class='cc-v'>{v}</span></div>"
         for k, v in filas)
     st.markdown(
-        f"<div style='background:#1d1b20;border:1px solid #2b2a2e;border-top:3px solid {color};"
-        f"border-radius:12px;padding:10px 14px;"
-        f"box-shadow:0 1px 2px rgba(0,0,0,.3),0 2px 8px rgba(0,0,0,.18);height:100%;'>"
-        f"<div style='display:flex;align-items:center;gap:7px;width:100%;justify-content:center;'>"
-        f"<span style='font-size:15px;'>{icono}</span>"
-        f"<span style='color:{color};font-size:11.5px;font-weight:700;letter-spacing:1.6px;'>{tag}</span></div>"
-        f"<div style='font-size:19px;font-weight:600;color:{(valor_color or '#e6e0e9')};margin:6px 0 6px;"
-        f"font-variant-numeric:tabular-nums;line-height:1.15;text-align:center;'>{valor}</div>"
-        f"<div style='border-top:1px solid #2b2a2e;padding-top:6px;display:flex;flex-direction:column;gap:2px;'>{rows}</div></div>",
+        f"<div class='chain-card' style='border-top-color:{color}'>"
+        f"<div class='cc-head'><span class='cc-dot' style='background:{color}'></span>"
+        f"<span class='cc-tag' style='color:{color}'>{tag}</span></div>"
+        f"<div class='cc-val' style='color:{(valor_color or '#e6e0e9')}'>{valor}</div>"
+        f"<div class='cc-rows'>{rows}</div></div>",
         unsafe_allow_html=True,
     )
 
 
 def _arrow():
-    st.markdown(
-        "<div style='height:100%;display:flex;align-items:center;justify-content:center;'>"
-        "<span style='color:#5f5f6b;font-size:22px;'>→</span></div>",
-        unsafe_allow_html=True,
-    )
+    st.markdown("<div class='cc-arrow'>›</div>", unsafe_allow_html=True)
 
 
 # =============================================================================
 # HELPERS DE PLOTLY
 # =============================================================================
 def _play_buttons(duration_ms=70):
+    """Botones de la animación, con el estilo del resto de la interfaz."""
     return [dict(
         type="buttons", showactive=False, direction="left",
-        x=0.0, y=1.02, xanchor="left", yanchor="bottom",
+        x=0.0, y=1.0, xanchor="left", yanchor="bottom",
+        pad=dict(t=0, r=0, b=2, l=0),
+        bgcolor="#1d1b20", bordercolor="#2b2a2e", borderwidth=1,
+        font=dict(color="#c4c7d1", size=11, family=_FONT),
         buttons=[
-            dict(label="▶ Reproducir", method="animate",
+            dict(label="▶  Reproducir", method="animate",
                  args=[None, {"frame": {"duration": duration_ms, "redraw": True},
-                              "transition": {"duration": 0}, "fromcurrent": True, "mode": "immediate"}]),
-            dict(label="⏸ Pausar", method="animate",
+                              "transition": {"duration": 0}, "fromcurrent": False,
+                              "mode": "immediate"}]),
+            dict(label="⏸  Pausar", method="animate",
                  args=[[None], {"frame": {"duration": 0, "redraw": False},
                                 "transition": {"duration": 0}, "mode": "immediate"}]),
         ])]
@@ -398,22 +449,60 @@ def _frame_slider(n, prefix, labels=None):
                     label=_lab(k), method="animate")
                for k in range(n)],
         transition={"duration": 0},
-        currentvalue={"visible": True, "prefix": prefix, "font": {"size": 12}},
-        x=0.06, len=0.94)]
+        currentvalue={"visible": True, "prefix": prefix,
+                      "font": {"size": 10.5, "color": "#8f94a1", "family": _FONT}},
+        font={"size": 9.5, "color": "#8f94a1", "family": _FONT},
+        tickcolor="rgba(0,0,0,0)",
+        bgcolor="#1d1b20", bordercolor="#2b2a2e", borderwidth=1,
+        active=n - 1, pad=dict(t=8, b=0, l=0, r=0),
+        x=0.04, y=-0.17, len=0.96)]
 
 
 # =============================================================================
 # COMPONENTE 1: OSCILOSCOPIO EN VIVO (30 fps, se pausa si la pestaña se oculta)
 # =============================================================================
+_CANVAS_CSS = """
+<style>
+  /* Los canvas viven en un iframe propio: style.css de la página no llega hasta
+     acá, así que cada componente trae su micro-hoja (8 reglas, misma paleta). */
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #141218; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Roboto', 'Segoe UI', system-ui, sans-serif; }
+  .cwrap { border-radius: 14px; overflow: hidden; background: #141218;
+           border: 1px solid #2b2a2e; }
+  .cbar { display: flex; align-items: center; gap: 9px; padding: 8px 13px;
+          border-bottom: 1px solid rgba(230, 224, 233, .07); }
+  .ctag { font-size: 9.5px; letter-spacing: .16em; font-weight: 700;
+          color: #c4c7d1; text-transform: uppercase; white-space: nowrap; }
+  .cmeta { font-size: 11px; color: #9ea3b0; white-space: nowrap; overflow: hidden;
+           text-overflow: ellipsis; }
+  .cval { margin-left: auto; font-family: 'Roboto Mono', ui-monospace, monospace;
+          font-size: 11px; color: #9ea3b0; background: rgba(255, 255, 255, .045);
+          border: 1px solid rgba(255, 255, 255, .05); border-radius: 999px;
+          padding: 2px 9px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .clive { width: 6px; height: 6px; border-radius: 50%; background: #7ee2b8;
+           box-shadow: 0 0 0 3px rgba(126, 226, 184, .14); flex: none;
+           animation: pulso 2.4s ease-in-out infinite; }
+  @keyframes pulso { 0%, 100% { opacity: 1 } 55% { opacity: .28 } }
+  .lgd { display: inline-flex; align-items: center; gap: 5px; }
+  .lgd i { width: 9px; height: 2px; border-radius: 2px; display: inline-block; }
+  canvas { display: block; width: 100%; }
+</style>
+"""
+
+
 _SCOPE_HTML = """
-<div style="border-radius:12px;overflow:hidden;background:#141218;
-            box-shadow:0 1px 3px rgba(0,0,0,.35);">
-  <div style="display:flex;justify-content:space-between;align-items:center;
-              padding:8px 14px;font-family:'Roboto',sans-serif;font-size:12px;color:#9ea3b0;">
-    <span>OSCILOSCOPIO · TX → CANAL → RX · repaso ×__SPEED__<span id="burstNote"></span></span>
-    <span id="snrBadge" style="font-variant-numeric:tabular-nums;"></span>
+__CSS__
+<div class="cwrap">
+  <div class="cbar">
+    <span class="clive"></span>
+    <span class="ctag">Osciloscopio</span>
+    <span class="cmeta">repaso ×__SPEED__<span id="burstNote"></span></span>
+    <span class="lgd"><i style="background:#7ee2b8;"></i><span style="font-size:10.5px;color:#9ea3b0;">TX</span></span>
+    <span class="lgd"><i style="background:#f5b04b;"></i><span style="font-size:10.5px;color:#9ea3b0;">RX</span></span>
+    <span class="cval" id="snrBadge"></span>
   </div>
-  <canvas id="scope" style="width:100%;height:260px;display:block;"></canvas>
+  <canvas id="scope" style="height:252px;"></canvas>
 </div>
 <script>
 (function(){
@@ -494,7 +583,7 @@ function draw(ts){
   frm=(frm+1)%10;
   if(frm===0){
     if(P.sigma<=0){
-      badge.textContent='SNR instantáneo = ∞ (σ = 0: canal ideal)';
+      badge.textContent='SNR = ∞ · canal ideal';
       badge.style.color=P.ok;
     } else {
       let m1=0;
@@ -503,7 +592,7 @@ function draw(ts){
       const varN=Math.max(m1/nb,1e-14);
       const snr=10*Math.log10(spPower/varN);
       const col=snr>=15?P.ok:snr>0?P.mid:P.bad;
-      badge.textContent='SNR instantáneo ≈ '+snr.toFixed(1)+' dB';
+      badge.textContent='SNR ≈ '+snr.toFixed(1)+' dB';
       badge.style.color=col;
     }
   }
@@ -529,22 +618,24 @@ def _scope_component(d, speed):
         "tx": "#7ee2b8", "rx": "#f5b04b",
         "ok": "#7ee2b8", "mid": "#f5b04b", "bad": "#e57373",
     }
-    html = _SCOPE_HTML.replace("__PARAMS__", json.dumps(params)).replace("__SPEED__", f"{speed:.2f}")
-    st.iframe(html, height=310, width="stretch")
+    html = (_SCOPE_HTML.replace("__CSS__", _CANVAS_CSS)
+            .replace("__PARAMS__", json.dumps(params)).replace("__SPEED__", f"{speed:.2f}"))
+    st.iframe(html, height=298, width="stretch")
 
 
 # =============================================================================
 # COMPONENTE 2: HISTOGRAMA AWGN EN VIVO (8 fps, pausa si la pestaña se oculta)
 # =============================================================================
 _NOISE_HTML = """
-<div style="border-radius:12px;overflow:hidden;background:#141218;
-            box-shadow:0 1px 3px rgba(0,0,0,.35);">
-  <div style="display:flex;justify-content:space-between;align-items:center;
-              padding:8px 14px;font-family:'Roboto',sans-serif;font-size:12px;color:#9ea3b0;">
-    <span>RUIDO AWGN · distribución gaussiana en tiempo real</span>
-    <span style="font-variant-numeric:tabular-nums;">σ = __SIGMA__ V</span>
+__CSS__
+<div class="cwrap">
+  <div class="cbar">
+    <span class="clive"></span>
+    <span class="ctag">Ruido AWGN</span>
+    <span class="cmeta">histograma vs. gaussiana</span>
+    <span class="cval">σ = __SIGMA__ V</span>
   </div>
-  <canvas id="hn" style="width:100%;height:150px;display:block;"></canvas>
+  <canvas id="hn" style="height:150px;"></canvas>
 </div>
 <script>
 (function(){
@@ -618,22 +709,24 @@ raf=requestAnimationFrame(draw);
 
 def _noise_component(d):
     params = {"sigma": d["sigma"], "curve": "#f5b04b"}
-    html = _NOISE_HTML.replace("__PARAMS__", json.dumps(params)).replace("__SIGMA__", f"{d['sigma']:.2f}")
-    st.iframe(html, height=192, width="stretch")
+    html = (_NOISE_HTML.replace("__CSS__", _CANVAS_CSS)
+            .replace("__PARAMS__", json.dumps(params)).replace("__SIGMA__", f"{d['sigma']:.2f}"))
+    st.iframe(html, height=196, width="stretch")
 
 
 # =============================================================================
 # COMPONENTE 3: SERIE DE FOURIER EN VIVO (30 fps, pausa si se oculta)
 # =============================================================================
 _FOUR_HTML = """
-<div style="border-radius:12px;overflow:hidden;background:#141218;
-            box-shadow:0 1px 3px rgba(0,0,0,.35);">
-  <div style="display:flex;justify-content:space-between;align-items:center;
-              padding:8px 14px;font-family:'Roboto',sans-serif;font-size:12px;color:#9ea3b0;">
-    <span>__TITLE__</span>
-    <span id="fbadge" style="font-variant-numeric:tabular-nums;"></span>
+__CSS__
+<div class="cwrap">
+  <div class="cbar">
+    <span class="clive"></span>
+    <span class="ctag">Serie de Fourier</span>
+    <span class="cmeta">__TITLE__</span>
+    <span class="cval" id="fbadge"></span>
   </div>
-  <canvas id="four" style="width:100%;height:310px;display:block;"></canvas>
+  <canvas id="four" style="height:300px;"></canvas>
 </div>
 <script>
 (function(){
@@ -701,12 +794,12 @@ function draw(ts){
       const xx=(K-1)/(N-1)*W, yy=toY(target((K-1)/(N-1)*TV));
       ctx.beginPath();ctx.arc(xx,yy,5,0,2*PI);ctx.fillStyle='#7ee2b8';ctx.fill();
     }
-    badge.textContent='1 solo término — la senoidal ES su serie de Fourier';
+    badge.textContent='1 término';
   } else {
     const k=Math.floor((performance.now()/1000)/0.28)%11;
     const n=2*k+1;
     trace(ti=>partial(ti,n),P.accent,3.2,[]);
-    badge.textContent='Armónicas impares sumadas hasta n='+n+' (de '+NMAX+') → aproximación al pulso';
+    badge.textContent='n = '+n+' de '+NMAX;
   }
 }
 // Pausa real: se cancela el requestAnimationFrame con la pestaña oculta.
@@ -722,20 +815,20 @@ raf=requestAnimationFrame(draw);
 
 
 def _fourier_component(d):
-    title = "SERIE DE FOURIER · suma de armónicas (se reproduce sola)"
+    title = "armónicas impares · se reproduce sola"
     if d["senoidal"]:
-        title = "SERIE DE FOURIER · la senoidal se dibuja (1 solo término)"
+        title = "un solo término"
     params = {"A": d["amplitud"], "f": d["frecuencia"], "senoidal": d["senoidal"],
               "accent": "#8ab4f8"}
-    html = (_FOUR_HTML.replace("__TITLE__", title)
-            .replace("__PARAMS__", json.dumps(params)))
-    st.iframe(html, height=360, width="stretch")
+    html = (_FOUR_HTML.replace("__CSS__", _CANVAS_CSS)
+            .replace("__TITLE__", title).replace("__PARAMS__", json.dumps(params)))
+    st.iframe(html, height=348, width="stretch")
 
 
 # =============================================================================
 # GRÁFICO: MUESTREO → lineal vs sinc + curva de error
 # =============================================================================
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=24)
 def _fig_recon(P):
     d = _build_cached(**P)
     fs_ = d["fs"]
@@ -746,68 +839,75 @@ def _fig_recon(P):
     # se recalcula nada.
     partials = _partials_cached(**P)
 
-    if fs_ > 32:
-        idxs = np.unique(np.round(np.linspace(0, fs_ - 1, 32)).astype(int))
+    # 18 frames alcanzan para ver crecer la reconstrucción; cada frame viaja al
+    # navegador con 1 000 puntos por traza, así que no conviene pasar de ahí.
+    nf_max = 18
+    if fs_ > nf_max:
+        idxs = np.unique(np.round(np.linspace(0, fs_ - 1, nf_max)).astype(int))
     else:
         idxs = np.arange(fs_)
     nf = len(idxs)
     rms_ref = np.sqrt(np.mean(orig ** 2)) + 1e-12
+    # 500 puntos por traza: el trazo se ve igual de suave y la figura pesa la mitad
+    # (cada cuadro de la animación viaja al navegador).
+    td, origd = t[::2], orig[::2]
+
+    # Eje de error fijo 0–100 %: el primer cuadro (una sola muestra) da ~100 % y el
+    # último, casi 0. Así se ve la cuña derrumbarse y el eje no cambia al mover fs.
+    ymax = 100.0
 
     def fdata(m):
-        n = idxs[m]
-        lin = np.interp(t, tsamp[:n + 1], ms[:n + 1])
-        err = orig - partials[n]
-        e_pct = 100.0 * np.sqrt(np.mean(err ** 2)) / rms_ref
-        ytext = 0.9 * np.max(np.abs(err)) if np.any(err) else 1e-3
+        n = int(idxs[m])
+        lin = np.interp(td, tsamp[:n + 1], ms[:n + 1])
+        err = origd - partials[n][::2]
+        # El error se dibuja en % de la señal: el eje no depende de la amplitud y
+        # el número de la animación coincide con el de la tarjeta (RMS).
+        e_pct = 100.0 * float(np.sqrt(np.mean(err ** 2)) / rms_ref)
         return dict(
-            orig=go.Scatter(x=t, y=orig, mode='lines', name='Original (TX)',
-                            line=dict(color='rgba(230,224,233,0.5)', width=1.3, dash='dot')),
             muestras=go.Scatter(x=tsamp[:n + 1], y=ms[:n + 1], mode='markers', name='Muestras',
-                                marker=dict(color='#f5b04b', size=8, symbol='circle')),
-            lineal=go.Scatter(x=t, y=lin, mode='lines', name='Unir puntos (lineal)',
-                              line=dict(color='#d98ae0', width=1.8, dash='dash')),
-            sinc=go.Scatter(x=t, y=partials[n], mode='lines', name='Sinc (reconstrucción correcta)',
-                            line=dict(color='#8ab4f8', width=3)),
-            err_area=go.Scatter(x=t, y=err, mode='lines', name='Error (sinc vs original)',
-                                line=dict(color='rgba(229,115,115,0.8)', width=1.4),
-                                fill='tozeroy', fillcolor='rgba(229,115,115,0.18)'),
-            err_txt=go.Scatter(x=[t[int(0.06 * len(t))]], y=[ytext], mode='text',
-                               text=[f'{e_pct:.1f} %'], textfont=dict(color='#e57373', size=13),
-                               textposition='top center', cliponaxis=False),
+                                marker=dict(color='#8ab4f8', size=7, symbol='circle',
+                                            line=dict(color='#141218', width=1))),
+            lineal=go.Scatter(x=td, y=lin, mode='lines', name='Unir puntos (lineal)',
+                              line=dict(color='#f5b04b', width=1.8, dash='dash')),
+            sinc=go.Scatter(x=td, y=partials[n][::2], mode='lines', name='Sinc (reconstrucción correcta)',
+                            line=dict(color='#7ee2b8', width=2.6)),
+            err_area=go.Scatter(x=td, y=100.0 * err / rms_ref, mode='lines', name='Error (%)',
+                                line=dict(color='rgba(229,115,115,0.9)', width=1.3),
+                                fill='tozeroy', fillcolor='rgba(229,115,115,0.16)'),
+            e_pct=e_pct,
         )
 
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                        vertical_spacing=0.06, row_heights=[0.62, 0.38],
-                        subplot_titles=('', 'Error de la reconstrucción sinc'))
-    d0 = fdata(0)
-    fig.add_trace(d0["orig"], row=1, col=1)
-    fig.add_trace(d0["muestras"], row=1, col=1)
-    fig.add_trace(d0["lineal"], row=1, col=1)
-    fig.add_trace(d0["sinc"], row=1, col=1)
-    fig.add_trace(d0["err_area"], row=2, col=1)
-    fig.add_trace(d0["err_txt"], row=2, col=1)
+    frames_data = [fdata(m) for m in range(nf)]
 
-    frames = []
-    for m in range(nf):
-        dm = fdata(m)
-        frames.append(go.Frame(
-            name=str(m),
-            data=[dm["orig"], dm["muestras"], dm["lineal"], dm["sinc"], dm["err_area"], dm["err_txt"]]))
-    fig.update(frames=frames)
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                        vertical_spacing=0.1, row_heights=[0.66, 0.34],
+                        subplot_titles=None)
+    fig.add_trace(go.Scatter(x=td, y=origd, mode='lines', name='Original (TX)',
+                             line=dict(color='rgba(230,224,233,0.55)', width=1.2, dash='dot')),
+                  row=1, col=1)
+    d0f = frames_data[-1]
+    fig.add_trace(d0f["muestras"], row=1, col=1)
+    fig.add_trace(d0f["lineal"], row=1, col=1)
+    fig.add_trace(d0f["sinc"], row=1, col=1)
+    fig.add_trace(d0f["err_area"], row=2, col=1)
+
+    # traces=[1..4]: el original no cambia entre frames, así que no se repite.
+    fig.update(frames=[
+        go.Frame(name=str(m), traces=[1, 2, 3, 4],
+                 data=[fd["muestras"], fd["lineal"], fd["sinc"], fd["err_area"]])
+        for m, fd in enumerate(frames_data)])
 
     fig.update_yaxes(title_text='Amplitud (V)', row=1, col=1)
-    fig.update_yaxes(title_text='Error (V)', row=2, col=1)
+    fig.update_yaxes(title_text='Error (%)', row=2, col=1, range=[0, ymax])
     fig.update_xaxes(title_text='Tiempo (s)', row=2, col=1)
     for ann in fig.layout.annotations:
         ann.update(font=dict(size=12, color='#9ea3b0'))
-    fig.update_layout(
-        template='plotly_dark', height=520, hovermode='x unified',
-        paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG,
-        showlegend=False,
-        updatemenus=_play_buttons(120),
-        sliders=_frame_slider(nf, 'Muestras tomadas: ',
-                              [str(int(idxs[m]) + 1) for m in range(nf)]),
-        margin=dict(_PLOT_MARGIN, t=96))
+    _finish(fig, 520, legend=False, hovermode='x unified',
+            margin=dict(l=6, r=12, t=40, b=92))
+    fig.update_layout(showlegend=False,
+                      updatemenus=_play_buttons(120),
+                      sliders=_frame_slider(nf, 'Muestras tomadas: ',
+                                            [str(int(idxs[m]) + 1) for m in range(nf)]))
     return fig
 
 
@@ -849,7 +949,7 @@ def _b_minimo(snr_ref, b_ref, R):
     return hi
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=24)
 def _fig_shannon(P):
     d = _build_cached(**P)
     # Curva anclada al canal (N₀ fijo): N₀ y SNR_ref no dependen del slider de B.
@@ -866,13 +966,8 @@ def _fig_shannon(P):
                   "No hay curva C(B) que dibujar: el canal no tiene límite."),
             font=dict(color="#7ee2b8", size=15),
             bgcolor="rgba(29,27,32,0.6)", bordercolor="#7ee2b8", borderwidth=1)
-        fig.update_layout(
-            title='Capacidad del canal según el ancho de banda B (ruido N = N₀·B)',
-            xaxis_title='Ancho de banda B (kHz)', yaxis_title='Capacidad C (kbps)',
-            template='plotly_dark', height=400, showlegend=False,
-            paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG,
-            xaxis=dict(visible=False), yaxis=dict(visible=False),
-            margin=dict(_PLOT_MARGIN, t=70))
+        fig.update_layout(xaxis=dict(visible=False), yaxis=dict(visible=False))
+        _finish(fig, 360, legend=False, margin=dict(l=6, r=6, t=10, b=10))
         return fig
 
     Bv = np.arange(1, 101)
@@ -880,21 +975,34 @@ def _fig_shannon(P):
     bi = int(b_act) - 1
     Cb = Cv[bi]
     b_needed = _b_minimo(snr0, b0, R)
+    tope = _tope_capacidad(snr0, b0)
+    ymax = float(max(Cv)) * 1.16
 
     fig = go.Figure()
+    # Dos zonas: donde la tasa NO entra y donde sí. El color cuenta la historia
+    # antes de leer un solo número.
+    if b_needed is not None and 1.0 < b_needed < 100.0:
+        fig.add_vrect(x0=0, x1=b_needed, fillcolor='rgba(229,115,115,0.075)',
+                      line_width=0, layer='below')
+        fig.add_vrect(x0=b_needed, x1=100, fillcolor='rgba(126,226,184,0.05)',
+                      line_width=0, layer='below')
+
     fig.add_trace(go.Scatter(x=Bv, y=Cv, mode='lines', name='Capacidad C(B)',
                              line=dict(color='#8ab4f8', width=3),
-                             fill='tozeroy', fillcolor='rgba(138,180,248,0.08)'))
+                             fill='tozeroy', fillcolor='rgba(138,180,248,0.07)',
+                             hovertemplate='B = %{x} kHz · C = %{y:.1f} kbps<extra></extra>'))
     fig.add_trace(go.Scatter(x=Bv, y=np.full_like(Bv, R), mode='lines',
                              name=f'Tasa requerida R = {R} kbps',
-                             line=dict(color='#e57373', width=1.6, dash='dot')))
+                             line=dict(color='#e57373', width=1.6, dash='dot'),
+                             hovertemplate='R = %{y:.0f} kbps<extra></extra>'))
 
-    fig.add_vline(x=b_act, line_dash='dash', line_color='rgba(245,176,75,0.45)', line_width=1.2)
+    fig.add_vline(x=b_act, line_dash='dash', line_color='rgba(245,176,75,0.5)', line_width=1.2)
     fig.add_trace(go.Scatter(
         x=[b_act], y=[Cb], mode='markers+text', hoverinfo='skip', showlegend=False,
-        marker=dict(color='#f5b04b', size=10, line=dict(color='#141218', width=2)),
-        text=[f'B = {b_act} kHz · C = {Cb:.1f} kbps'], textposition='bottom right',
-        textfont=dict(color='#f5b04b', size=12)))
+        marker=dict(color='#f5b04b', size=11, line=dict(color='#141218', width=2)),
+        text=[f'B = {b_act} kHz · C = {Cb:.1f} kbps'],
+        textposition='bottom right' if b_act < 55 else 'bottom left',
+        textfont=dict(color='#f5b04b', size=11.5, family=_MONO)))
 
     if b_needed is None:
         fig.add_annotation(
@@ -912,26 +1020,25 @@ def _fig_shannon(P):
         else:
             nota = f'B mínimo para la tasa requerida: ≈ {b_needed:.0f} kHz'
             mark = b_needed
-        fig.add_vline(x=mark, line_dash='dash', line_color='#7ee2b8', line_width=1.6)
-        fig.add_annotation(x=mark, y=0.96, yref='paper', text=nota, showarrow=False,
-                           textangle=-90, font=dict(color='#7ee2b8', size=12),
-                           bgcolor='rgba(20,18,24,0.7)', xanchor='right', yanchor='top')
+        fig.add_vline(x=mark, line_dash='dash', line_color='#7ee2b8', line_width=1.4)
+        fig.add_annotation(x=mark, y=0.985, yref='paper', text=nota, showarrow=False,
+                           font=dict(color='#7ee2b8', size=11),
+                           bgcolor='rgba(20,18,24,0.8)', bordercolor='rgba(126,226,184,0.35)',
+                           borderwidth=1, borderpad=3,
+                           xanchor='right' if mark > 55 else 'left', yanchor='top')
 
-    fig.update_layout(
-        title='Capacidad C(B) con ruido N = N₀·B (N₀ fijo: al abrir banda baja el SNR)',
-        xaxis_title='Ancho de banda B (kHz)', yaxis_title='Capacidad C (kbps)',
-        template='plotly_dark', height=400, showlegend=True, hovermode='x unified',
-        paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG,
-        legend=dict(orientation='h', yanchor='bottom', y=1.0, xanchor='right', x=1,
-                    font=dict(size=11)),
-        margin=dict(_PLOT_MARGIN, t=84))
+    fig.update_layout(xaxis_title='Ancho de banda B (kHz)',
+                      yaxis_title='Capacidad C (kbps)',
+                      xaxis_range=[-2, 103], yaxis_range=[0, ymax])
+    _finish(fig, 400, legend=True, hovermode='x unified',
+            margin=dict(l=6, r=12, t=46, b=8))
     return fig
 
 
 # =============================================================================
 # ESPECTRO FFT
 # =============================================================================
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=16)
 def _fig_spectrum(P):
     d = _build_cached(**P)
     dt = t[1] - t[0]
@@ -953,13 +1060,9 @@ def _fig_spectrum(P):
         fh = hn * d["frecuencia"]
         if fh <= fmax_plot:
             fig.add_vline(x=fh, line_dash='dash', line_color='rgba(126,226,184,0.45)', line_width=1)
-    fig.update_layout(
-        title='Contenido espectral, TX vs RX',
-        xaxis_title='Frecuencia (Hz)', yaxis_title='Amplitud espectral',
-        template='plotly_dark', barmode='overlay', height=300,
-        paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG,
-        legend=dict(orientation='h', yanchor='bottom', y=1.0, xanchor='right', x=1),
-        margin=dict(_PLOT_MARGIN, t=64))
+    fig.update_layout(barmode='overlay',
+                      xaxis_title='Frecuencia (Hz)', yaxis_title='Amplitud espectral')
+    _finish(fig, 300, legend=True, margin=dict(l=6, r=12, t=46, b=8))
     return fig
 
 
@@ -1010,7 +1113,8 @@ MOD_INFO = {
 MODULACIONES = list(MOD_INFO)
 _CUADRADAS = ("QPSK", "16-QAM", "64-QAM")
 _APROXIMADAS = ("8-PSK", "16-PSK", "8-QAM", "32-QAM")
-_COLOR_FAMILIA = {"ASK": "#f5b04b", "FSK": "#9ea3b0", "PSK": "#8ab4f8", "DPSK": "#7ee2b8", "QAM": "#c58af9"}
+_COLOR_FAMILIA = {"ASK": "#f5b04b", "FSK": "#9ea3b0", "PSK": "#8ab4f8", "DPSK": "#7ee2b8",
+                  "QAM": "#c4c7d1"}
 
 
 def _qfunc(x):
@@ -1074,7 +1178,7 @@ def _sqnr_db(x, xq):
     return float("inf") if pe <= 0 else 10 * np.log10(float(np.mean(x ** 2)) / pe)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=16)
 def _fig_cuant(P, n_bits):
     d = _build_cached(**P)
     x = d["senal_original"]
@@ -1091,13 +1195,14 @@ def _fig_cuant(P, n_bits):
     fig.add_trace(go.Scatter(x=t[m], y=(x - xq)[m], mode="lines", name="Error de cuantización",
                              line=dict(color="#e57373", width=1.6), fill="tozeroy",
                              fillcolor="rgba(229,115,115,0.12)"), row=2, col=1)
-    fig.update_layout(
-        title="La señal cuantizada con N bits y su error", template="plotly_dark", height=420,
-        paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG, hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1, font=dict(size=11)),
-        margin=dict(_PLOT_MARGIN, t=84))
-    fig.update_xaxes(gridcolor="#2b2a2e")
-    fig.update_yaxes(gridcolor="#2b2a2e")
+    # Niveles del cuantizador: se dibujan solo si no tapan la señal (N ≤ 5).
+    if niveles <= 32:
+        lo = float(np.min(x))
+        for i in range(int(niveles)):
+            fig.add_hline(y=lo + delta * (i + 0.5), line_width=1,
+                          line_color="rgba(138,180,248,0.13)", row=1, col=1)
+    _finish(fig, 420, legend=True, hovermode="x unified",
+            margin=dict(l=6, r=12, t=46, b=8))
     fig.update_xaxes(title_text="Tiempo (s)", row=2, col=1)
     fig.update_yaxes(title_text="Amplitud (V)", row=1, col=1)
     fig.update_yaxes(title_text="Error (V)", row=2, col=1)
@@ -1123,42 +1228,67 @@ def _simular_modulacion(mod, g_db, seed):
     idx = rng.integers(0, len(pts), _N_SIMBOLOS)
     tx = pts[idx]
     if not np.isfinite(g_db):
-        return dict(rx=tx[:_N_PUNTOS], ser=0.0, n=_N_SIMBOLOS)
+        return dict(rx=tx[:_N_PUNTOS], ser=0.0, n=_N_SIMBOLOS,
+                    err=np.zeros(_N_PUNTOS, dtype=bool))
     g = 10 ** (g_db / 10)
     sigma = math.sqrt(1.0 / (2.0 * k * g))         # Es = 1 y Es/N0 = k·Eb/N0
     rx = tx + sigma * (rng.normal(size=_N_SIMBOLOS) + 1j * rng.normal(size=_N_SIMBOLOS))
     dec = np.argmin(np.abs(rx[:, None] - pts[None, :]), axis=1)
-    return dict(rx=rx[:_N_PUNTOS], ser=float(np.mean(dec != idx)), n=_N_SIMBOLOS)
+    return dict(rx=rx[:_N_PUNTOS], ser=float(np.mean(dec != idx)), n=_N_SIMBOLOS,
+                err=(dec != idx)[:_N_PUNTOS])
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=16)
 def _fig_constelacion(mod, g_db, seed):
     sim = _simular_modulacion(mod, g_db, seed)
     inf = MOD_INFO[mod]
     pts = inf["pts"]
     rx = sim["rx"]
+    err = sim.get("err")
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=rx.real, y=rx.imag, mode="markers", name="Símbolos recibidos",
-                             marker=dict(color="rgba(245,176,75,0.45)", size=5)))
-    fig.add_trace(go.Scatter(x=pts.real, y=pts.imag, mode="markers", name="Constelación ideal",
-                             marker=dict(color="#7ee2b8", size=12 if inf["M"] <= 16 else 8, symbol="x",
-                                         line=dict(color="#7ee2b8", width=2))))
     lim = 1.35 * float(np.max(np.abs(pts))) + 0.3
+
+    # Fronteras de decisión: en cada celda gana el punto más cercano, así que el
+    # contorno del índice dibujado justo las líneas donde el receptor cambia de idea.
+    n = 130
+    eje = np.linspace(-lim, lim, n)
+    X, Y = np.meshgrid(eje, eje)
+    Znear = np.argmin(np.abs((X + 1j * Y)[..., None] - pts[None, None, :]), axis=-1)
+    fig.add_trace(go.Contour(x=eje, y=eje, z=Znear, showscale=False, hoverinfo="skip",
+                             name="Fronteras de decisión",
+                             contours=dict(coloring="none", showlabels=False),
+                             line=dict(color="rgba(138,180,248,0.20)", width=1)))
+
+    if err is not None and len(err) == len(rx):
+        fig.add_trace(go.Scatter(x=rx.real[~err], y=rx.imag[~err], mode="markers",
+                                 name="Recibidos bien", marker=dict(color="rgba(245,176,75,0.5)", size=5),
+                                 hovertemplate="I = %{x:.2f} · Q = %{y:.2f}<extra>símbolo correcto</extra>"))
+        if np.any(err):
+            fig.add_trace(go.Scatter(x=rx.real[err], y=rx.imag[err], mode="markers",
+                                     name="Decididos mal",
+                                     marker=dict(color="rgba(229,115,115,0.85)", size=6,
+                                                 line=dict(color="#141218", width=.6)),
+                                     hovertemplate="I = %{x:.2f} · Q = %{y:.2f}<extra>error</extra>"))
+    else:
+        fig.add_trace(go.Scatter(x=rx.real, y=rx.imag, mode="markers", name="Símbolos recibidos",
+                                 marker=dict(color="rgba(245,176,75,0.45)", size=5)))
+
+    fig.add_trace(go.Scatter(x=pts.real, y=pts.imag, mode="markers", name="Constelación ideal",
+                             marker=dict(color="#7ee2b8", size=13 if inf["M"] <= 16 else 8, symbol="x",
+                                         line=dict(color="#7ee2b8", width=2))))
+
     ejes = ("Componente del tono 1", "Componente del tono 2") if inf["familia"] == "FSK" \
         else ("En fase (I)", "En cuadratura (Q)")
+    _finish(fig, 380, legend=True, margin=dict(l=6, r=12, t=46, b=8))
     fig.update_layout(
-        title=f"Constelación {mod} recibida" + (" (detección diferencial)" if mod == "DPSK" else ""),
-        template="plotly_dark", height=380, paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG,
         xaxis=dict(title=ejes[0], range=[-lim, lim], constrain="domain",
-                   zeroline=True, zerolinecolor="#3a3940", gridcolor="#2b2a2e"),
+                   zeroline=True, zerolinecolor="#3a3940", gridcolor="#26242a"),
         yaxis=dict(title=ejes[1], range=[-lim, lim], scaleanchor="x", scaleratio=1,
-                   constrain="domain", zeroline=True, zerolinecolor="#3a3940", gridcolor="#2b2a2e"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1, font=dict(size=11)),
-        margin=dict(_PLOT_MARGIN, t=84))
+                   constrain="domain", zeroline=True, zerolinecolor="#3a3940", gridcolor="#26242a"))
     return fig
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=32)
 def _fig_ber(mod, g_db):
     gdb = np.linspace(-2, 20, 221)
     g = 10 ** (gdb / 10)
@@ -1169,30 +1299,33 @@ def _fig_ber(mod, g_db):
             x=gdb, y=np.maximum(_ber_teorico(m, g), 1e-9), mode="lines", name=m, showlegend=sel,
             opacity=1.0 if sel else 0.32, hovertemplate=f"{m}: %{{y:.1e}}<extra></extra>",
             line=dict(color=_COLOR_FAMILIA[MOD_INFO[m]["familia"]], width=3.4 if sel else 1.2)))
-    fig.add_vline(x=10 * np.log10(math.log(2)), line_dash="dash", line_color="#e57373", line_width=1.4)
-    fig.add_annotation(x=10 * np.log10(math.log(2)), y=0.04, yref="paper", xanchor="left",
-                       text="límite de Shannon (−1,59 dB)", showarrow=False, textangle=-90,
-                       font=dict(color="#e57373", size=11), bgcolor="rgba(20,18,24,0.7)")
+    lim_db = 10 * np.log10(math.log(2))
+    # Zona prohibida: por debajo de −1,59 dB no hay código que salve al enlace.
+    fig.add_vrect(x0=-2, x1=lim_db, fillcolor="rgba(229,115,115,0.07)", line_width=0, layer="below")
+    fig.add_vline(x=lim_db, line_dash="dash", line_color="rgba(229,115,115,0.7)", line_width=1.2)
+    fig.add_annotation(x=lim_db + 0.25, y=0.97, yref="paper", xanchor="left", yanchor="top",
+                       text="límite de Shannon · −1,59 dB", showarrow=False,
+                       font=dict(color="#e57373", size=10.5))
+    fig.add_hline(y=1e-5, line_dash="dot", line_color="rgba(158,163,176,0.45)", line_width=1)
     if np.isfinite(g_db):
         gx = float(np.clip(g_db, -2, 20))
         by = float(np.maximum(_ber_teorico(mod, 10 ** (g_db / 10)), 1e-9))
         fig.add_trace(go.Scatter(
             x=[gx], y=[by], mode="markers", showlegend=False, hoverinfo="skip",
             marker=dict(color="#f5b04b", size=11, line=dict(color="#141218", width=2))))
-        fig.add_annotation(x=gx, y=np.log10(by), text=f"{mod}: Eb/N0 = {g_db:.1f} dB", showarrow=True,
-                           arrowcolor="#f5b04b", ax=40, ay=-34, font=dict(color="#f5b04b", size=12),
-                           bgcolor="rgba(20,18,24,0.7)")
-    fig.update_layout(
-        title="BER según Eb/N0 (resaltada: la elegida)", template="plotly_dark",
-        height=380, paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG, hovermode="closest",
-        xaxis=dict(title="Eb/N0 (dB)", gridcolor="#2b2a2e"),
-        yaxis=dict(title="BER", type="log", range=[-6, 0], exponentformat="power", gridcolor="#2b2a2e"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1, font=dict(size=11)),
-        margin=dict(_PLOT_MARGIN, t=84))
+        fig.add_annotation(x=gx, y=by, text=f"{mod} · {g_db:.1f} dB → BER {_fmt_ber(by)}",
+                           showarrow=True, arrowcolor="#f5b04b", ax=48, ay=-30,
+                           font=dict(color="#f5b04b", size=11.5),
+                           bgcolor="rgba(20,18,24,0.8)", bordercolor="rgba(245,176,75,0.35)",
+                           borderwidth=1, borderpad=3)
+    _finish(fig, 380, legend=True, hovermode="closest", margin=dict(l=6, r=12, t=46, b=8))
+    fig.update_layout(xaxis=dict(title="Eb/N0 (dB)", gridcolor="#26242a"),
+                      yaxis=dict(title="BER", type="log", range=[-6, 0], exponentformat="power",
+                                 gridcolor="#26242a"))
     return fig
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=16)
 def _fig_portadora(mod):
     """Portadora modulada por ocho símbolos fijos: así se ve cada técnica en el tiempo."""
     inf = MOD_INFO[mod]
@@ -1216,18 +1349,20 @@ def _fig_portadora(mod):
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=tau, y=s, mode="lines", name="Portadora modulada",
                              line=dict(color="#f5b04b", width=1.8)))
-    for j in range(n_sim + 1):
-        fig.add_vline(x=j, line_dash="dot", line_color="#3a3940", line_width=1)
+    # Banda alternada por símbolo: separa visualmente un símbolo del siguiente.
     for j in range(n_sim):
-        fig.add_annotation(x=j + 0.5, y=1.18, text=format(int(idx[j]), f"0{k}b"), showarrow=False,
-                           font=dict(color="#7ee2b8", size=13))
-    fig.update_layout(
-        title=("Portadora modulada: cada tramo es un símbolo (arriba, sus bits)"
-               + (" · la fase cambia cuando el bit es 1" if mod == "DPSK" else "")),
-        template="plotly_dark", height=280, paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG, showlegend=False,
-        xaxis=dict(title="Tiempo (duraciones de símbolo)", gridcolor="#2b2a2e", showgrid=False),
-        yaxis=dict(title="Amplitud", range=[-1.35, 1.35], gridcolor="#2b2a2e"),
-        margin=dict(_PLOT_MARGIN, t=60))
+        if j % 2 == 0:
+            fig.add_vrect(x0=j, x1=j + 1, fillcolor="rgba(230,224,233,0.022)",
+                          line_width=0, layer="below")
+    for j in range(n_sim + 1):
+        fig.add_vline(x=j, line_dash="dot", line_color="rgba(58,57,64,0.9)", line_width=1)
+    for j in range(n_sim):
+        fig.add_annotation(x=j + 0.5, y=1.26, text=format(int(idx[j]), f"0{k}b"), showarrow=False,
+                           font=dict(color="#7ee2b8", size=12, family=_MONO))
+    _finish(fig, 280, legend=False, margin=dict(l=6, r=12, t=14, b=8))
+    fig.update_layout(xaxis=dict(title="Tiempo (duraciones de símbolo)", gridcolor="#26242a",
+                                 showgrid=False),
+                      yaxis=dict(title="Amplitud", range=[-1.42, 1.46], gridcolor="#26242a"))
     return fig
 
 
@@ -1248,7 +1383,7 @@ _POS_TXT = {"BPSK": "bottom center", "DPSK": "top center", "OOK": "middle right"
             "QPSK": "middle left", "8-PSK": "top center", "8-QAM": "bottom center"}
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=16)
 def _fig_eficiencia(mod):
     """Eficiencia espectral ideal (k bit/s/Hz) contra el Eb/N0 que exige cada modulación."""
     eta = np.linspace(0.1, 7.0, 120)
@@ -1259,17 +1394,25 @@ def _fig_eficiencia(mod):
         ms = [m for m in MODULACIONES if MOD_INFO[m]["familia"] == fam]
         fig.add_trace(go.Scatter(
             x=[_ebn0_requerido(m) for m in ms], y=[MOD_INFO[m]["k"] for m in ms],
-            mode="markers+text", text=ms, textposition=[_POS_TXT.get(m, "middle right") for m in ms], name=fam,
-            hovertemplate="%{text}: %{x:.1f} dB, %{y} bit/s/Hz<extra></extra>",
-            marker=dict(color=_COLOR_FAMILIA[fam], size=[16 if m == mod else 10 for m in ms]),
-            textfont=dict(color=_COLOR_FAMILIA[fam], size=12)))
-    fig.update_layout(
-        title="Cuánto cuesta cada bit por hertz (Eb/N0 necesario para BER = 10⁻⁵)", template="plotly_dark",
-        height=420, paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG,
-        xaxis=dict(title="Eb/N0 necesario (dB)", range=[-2, 30], gridcolor="#2b2a2e"),
-        yaxis=dict(title="Eficiencia espectral ideal (bit/s/Hz)", range=[0, 7], gridcolor="#2b2a2e"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1, font=dict(size=11)),
-        margin=dict(_PLOT_MARGIN, t=84))
+            mode="markers", text=ms, textposition="middle right", name=fam,
+            customdata=ms,
+            hovertemplate="%{customdata}: %{x:.1f} dB, %{y} bit/s/Hz<extra></extra>",
+            marker=dict(color=_COLOR_FAMILIA[fam], size=[15 if m == mod else 9 for m in ms],
+                        opacity=1.0 if fam == "X" else 0.9,
+                        line=dict(color="#141218", width=1.2))))
+    # Solo se rotula la modulación elegida: 12 etiquetas superpuestas era ruido.
+    _kx = _ebn0_requerido(mod)
+    fig.add_trace(go.Scatter(
+        x=[_kx], y=[MOD_INFO[mod]["k"]], mode="markers+text", text=[mod], showlegend=False,
+        textposition="top right", textfont=dict(color=_COLOR_FAMILIA[MOD_INFO[mod]["familia"]],
+                                                size=12.5),
+        marker=dict(color=_COLOR_FAMILIA[MOD_INFO[mod]["familia"]], size=18, symbol="circle-open",
+                    line=dict(color=_COLOR_FAMILIA[MOD_INFO[mod]["familia"]], width=2)),
+        hoverinfo="skip"))
+    _finish(fig, 420, legend=True, margin=dict(l=6, r=12, t=46, b=8))
+    fig.update_layout(xaxis=dict(title="Eb/N0 necesario (dB)", range=[-2, 30], gridcolor="#26242a"),
+                      yaxis=dict(title="Eficiencia espectral ideal (bit/s/Hz)", range=[0, 7],
+                                 gridcolor="#26242a"))
     return fig
 
 
@@ -1283,7 +1426,7 @@ def _fmt_ber(x):
 # =============================================================================
 # PERTURBACIONES ADICIONALES DEL CANAL
 # =============================================================================
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=16)
 def _fig_pert_onda(P):
     d = _build_cached(**P)
     tmax = min(1.0, 4.0 / d["frecuencia"])
@@ -1299,20 +1442,17 @@ def _fig_pert_onda(P):
                              line=dict(color="#f5b04b", width=1.8)), row=1, col=1)
     if fading:
         fig.add_trace(go.Scatter(x=t[m], y=d["ganancia"][m], mode="lines", name="Ganancia del canal",
-                                 line=dict(color="#c58af9", width=1.8), fill="tozeroy",
-                                 fillcolor="rgba(197,138,249,0.12)"), row=2, col=1)
+                                 line=dict(color="#8ab4f8", width=1.8), fill="tozeroy",
+                                 fillcolor="rgba(138,180,248,0.12)"), row=2, col=1)
         fig.update_yaxes(title_text="Ganancia", row=2, col=1, gridcolor="#2b2a2e")
-    fig.update_layout(
-        title="La señal recibida con la perturbación activa", template="plotly_dark",
-        height=380 if fading else 320, paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG, hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1, font=dict(size=11)),
-        margin=dict(_PLOT_MARGIN, t=84))
-    fig.update_xaxes(title_text="Tiempo (s)", row=filas, col=1, gridcolor="#2b2a2e")
-    fig.update_yaxes(title_text="Amplitud (V)", row=1, col=1, gridcolor="#2b2a2e")
+    _finish(fig, 380 if fading else 320, legend=True, hovermode="x unified",
+            margin=dict(l=6, r=12, t=46, b=8))
+    fig.update_xaxes(title_text="Tiempo (s)", row=filas, col=1)
+    fig.update_yaxes(title_text="Amplitud (V)", row=1, col=1)
     return fig
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=16)
 def _fig_pert_ruido(P):
     d = _build_cached(**P)
     ruido = d["ruido"]
@@ -1339,14 +1479,11 @@ def _fig_pert_ruido(P):
         fig.add_trace(go.Scatter(x=xs, y=np.exp(-(xs - np.mean(ruido)) ** 2 / (2 * sd * sd)) / (sd * np.sqrt(2 * np.pi)),
                                  mode="lines", name="Gaussiana de igual potencia",
                                  line=dict(color="#8ab4f8", width=2, dash="dash")), row=1, col=2)
-    fig.update_xaxes(title_text="Frecuencia (Hz)", row=1, col=1, gridcolor="#2b2a2e")
-    fig.update_yaxes(title_text="Amplitud (V)", row=1, col=1, gridcolor="#2b2a2e")
-    fig.update_xaxes(title_text="Valor del ruido (V)", row=1, col=2, gridcolor="#2b2a2e")
-    fig.update_yaxes(title_text="Densidad", row=1, col=2, gridcolor="#2b2a2e")
-    fig.update_layout(template="plotly_dark", height=340, paper_bgcolor=_PLOT_BG, plot_bgcolor=_PLOT_BG,
-                      legend=dict(orientation="h", yanchor="bottom", y=1.08, xanchor="right", x=1,
-                                  font=dict(size=11)),
-                      margin=dict(_PLOT_MARGIN, t=70))
+    fig.update_xaxes(title_text="Frecuencia (Hz)", row=1, col=1)
+    fig.update_yaxes(title_text="Amplitud (V)", row=1, col=1)
+    fig.update_xaxes(title_text="Valor del ruido (V)", row=1, col=2)
+    fig.update_yaxes(title_text="Densidad", row=1, col=2)
+    _finish(fig, 340, legend=True, margin=dict(l=6, r=12, t=52, b=8))
     return fig
 
 
@@ -1564,6 +1701,10 @@ with st.sidebar:
     _sb_title("Muestreo")
     st.slider("Frecuencia de muestreo fs (Hz)", min_value=5, max_value=100, step=1, key="frec_muestreo")
 
+    _sb_title("Animación")
+    st.slider("Velocidad de repaso (×)", min_value=0.05, max_value=1.0, step=0.05, key="scope_speed",
+              help="Qué tan rápido se desplaza la ventana del osciloscopio.")
+
     _sb_title("Casos para la presentación")
     st.selectbox("Caso", list(CASOS), key="caso_sel", label_visibility="collapsed")
     if st.button("▶ Cargar caso", width="stretch", key="sb_caso"):
@@ -1607,49 +1748,59 @@ with st.sidebar:
     st.download_button("⬇️ Señales TX/RX (CSV)", data=_csv_senales(d0), file_name="simulador_senales.csv",
                        mime="text/csv", width="stretch", key="dl_sen")
 
-# Siempre se emite el mismo elemento (vacío si el modo está apagado): si apareciera y
-# desapareciera, Streamlit reiniciaría la pestaña activa al activar el modo.
-st.markdown("<style>" + (".block-container{max-width:1500px;}" if st.session_state.get("modo_pres") else "") + "</style>",
-            unsafe_allow_html=True)
-
-st.markdown(
-    "<div class='app-head'><h1>Simulador integral de sistemas de comunicación</h1>"
-    "<div class='app-sub'>Comunicaciones · enlace completo TX → canal → RX</div></div>",
-    unsafe_allow_html=True)
-
+# Modo presentación sin <style> inline: el contenedor con key activa las reglas de
+# style.css (body:has(.st-key-pres) …). Siempre se emite el mismo elemento para que
+# Streamlit no remonte la pestaña activa al activar el modo.
 _snr = d0["snr_db"]
 _B = st.session_state.get("base")
-c1, a1, c2, a2, c3 = st.columns([5, 0.7, 5, 0.7, 5])
-with c1:
-    _chain_card("TX · FUENTE", "📡", "#7ee2b8",
-                "Onda senoidal" if d0["senoidal"] else "Tren de pulsos",
-                [("Frecuencia", f"{d0['frecuencia']} Hz"),
-                 ("Amplitud A", f"{d0['amplitud']:.1f} V")]
-                + ([("Potencia TX", f"{d0['potencia_tx']:.1f} W")] if _B else []))
-with a1:
-    _arrow()
-with c2:
-    _chain_card("CANAL", "🌊", "#c4c7d1",
-                f"SNR {_fmt_db(_snr)}",
-                [("Atenuación", f"{st.session_state['atenuacion_db']:.1f} dB"),
-                 ("Ruido σ ef.", f"{d0['sigma']:.2f} V" + (" · ráfaga" if d0["burst"] else ""))]
-                + ([("Perturbación", f"{d0['tipo_perturb']} {d0['intens_perturb']} %")]
-                   if d0["tipo_perturb"] != PERT_NINGUNA and d0["intens_perturb"] > 0 else [])
-                + ([("Δ SNR vs base", _delta_html(d0["snr_db"], _B["snr_db"], "dB"))] if _B else []),
-                valor_color=_snr_color(_snr))
-with a2:
-    _arrow()
-with c3:
-    _chain_card("RX · RECEPTOR", "📻", "#f5b04b",
-                f"{d0['amplitud_atenuada']:.2f} V",
-                [("Potencia RX", f"{d0['potencia_senal']:.2f} W"),
-                 ("Capacidad C", _fmt_kbps(d0["capacidad_kbps"]))]
-                + ([("Δ C vs base", _delta_html(d0["capacidad_kbps"], _B["capacidad_kbps"], "kbps"))] if _B else []))
+_r_ok = d0["r_bps"] <= d0["capacidad_kbps"] * 1000
+_nyq_cls, _nyq_txt = _nyq_badge(d0)
+st.markdown(
+    f"<div class='hero{' pres-on' if st.session_state.get('modo_pres') else ''}'><div>"
+    "<div class='kicker'>TFI · Comunicaciones</div>"
+    "<h1>Simulador integral de sistemas de comunicación</h1>"
+    "<div class='sub'>Enlace completo <b>TX → canal → RX</b> · señal, muestreo, Shannon "
+    "y modulación digital</div></div>"
+    "<div class='hero-badges'>"
+    f"<span class='hbadge {'ok' if _r_ok else 'bad'}'><i></i>{'R ≤ C' if _r_ok else 'R > C'}"
+    f" · {d0['tasa_deseada_kbps']:.0f} / {_fmt_kbps(d0['capacidad_kbps'])}</span>"
+    f"<span class='hbadge {_nyq_cls}'><i></i>{_nyq_txt}</span>"
+    "</div></div>",
+    unsafe_allow_html=True,
+)
 
-st.markdown("<div style='height:10px'></div>", unsafe_allow_html=True)
+# La cadena queda pegajosa al hacer scroll: los números siguen a la vista mientras se
+# mueven los sliders del panel lateral.
+with st.container(key="chain"):
+    c1, a1, c2, a2, c3 = st.columns([5, 0.6, 5, 0.6, 5], gap="small")
+    with c1:
+        _chain_card("TX · FUENTE", "📡", "#7ee2b8",
+                    "Onda senoidal" if d0["senoidal"] else "Tren de pulsos",
+                    [("Frecuencia", f"{d0['frecuencia']} Hz"),
+                     ("Amplitud A", f"{d0['amplitud']:.1f} V")]
+                    + ([("Potencia TX", f"{d0['potencia_tx']:.1f} W")] if _B else []))
+    with a1:
+        _arrow()
+    with c2:
+        _chain_card("CANAL", "🌊", "#c4c7d1",
+                    f"SNR {_fmt_db(_snr)}",
+                    [("Atenuación", f"{st.session_state['atenuacion_db']:.1f} dB"),
+                     ("Ruido σ ef.", f"{d0['sigma']:.2f} V" + (" · ráfaga" if d0["burst"] else ""))]
+                    + ([("Perturbación", f"{d0['tipo_perturb']} {d0['intens_perturb']} %")]
+                       if d0["tipo_perturb"] != PERT_NINGUNA and d0["intens_perturb"] > 0 else [])
+                    + ([("Δ SNR vs base", _delta_html(d0["snr_db"], _B["snr_db"], "dB"))] if _B else []),
+                    valor_color=_snr_color(_snr))
+    with a2:
+        _arrow()
+    with c3:
+        _chain_card("RX · RECEPTOR", "📻", "#f5b04b",
+                    f"{d0['amplitud_atenuada']:.2f} V",
+                    [("Potencia RX", f"{d0['potencia_senal']:.2f} W"),
+                     ("Capacidad C", _fmt_kbps(d0["capacidad_kbps"]))]
+                    + ([("Δ C vs base", _delta_html(d0["capacidad_kbps"], _B["capacidad_kbps"], "kbps"))] if _B else []))
 
 tab_senal, tab_canal, tab_muestreo, tab_shannon, tab_digital = st.tabs(
-    ["🎼 Señal", "🌊 Canal", "🎯 Muestreo", "⚖️ Shannon", "🔢 Digital"])
+    ["Señal", "Canal", "Muestreo", "Shannon", "Digital"])
 
 # ---------------- PESTAÑA 1: SEÑAL ----------------
 with tab_senal:
@@ -1660,15 +1811,6 @@ with tab_senal:
            "Fourier). La animación corre en el navegador: la página no se recarga.")
 
     _section("Osciloscopio en vivo", "📟")
-    spc1, spc2 = st.columns([2, 5])
-    with spc1:
-        st.slider("Velocidad de repaso (×)", min_value=0.05, max_value=1.0, step=0.05, key="scope_speed")
-    with spc2:
-        st.markdown(
-            "<div style='color:#9ea3b0;font-size:12.5px;padding-top:32px;'>"
-            "<span class='legend'><i style='background:#7ee2b8;'></i>TX original</span>"
-            "<span class='legend'><i style='background:#f5b04b;'></i>RX recibida</span></div>",
-            unsafe_allow_html=True)
     _scope_component(d0, st.session_state["scope_speed"])
     _caption("El osciloscopio genera su propio ruido en el navegador: es una realización independiente "
                "de la del modelo (seed de Python). Por eso el SNR instantáneo del recuadro puede diferir "
@@ -1698,6 +1840,8 @@ with tab_senal:
                  "canal de ancho finito.")
 
     with st.expander("📊 Espectro FFT, TX vs RX"):
+        _chart_head("Contenido espectral, TX vs RX",
+                    "Una senoidal es una línea; un pulso reparte su energía en armónicos impares.")
         st.plotly_chart(_fig_spectrum(_PARAMS), width="stretch")
         st.markdown(
             "<div style='color:#9ea3b0;font-size:12.5px;'>La senoidal concentra toda su energía en una "
@@ -1787,8 +1931,14 @@ with tab_canal:
                 _chip("⚡", "Potencia de la perturbación", f"{d0['p_pert']:.3f} W", "#f5b04b")
             with pc4:
                 _chip("📏", "Señal/interferencia (SIR)", _fmt_db(d0["sir_db"]), _snr_color(d0["sir_db"]))
+        _chart_head("La señal recibida con la perturbación activa",
+                    "Verde punteado: TX atenuada sin perturbación. Ámbar: lo que llega al receptor.",
+                    derecha=d0["tipo_perturb"])
         st.plotly_chart(_fig_pert_onda(_PARAMS), width="stretch")
         if d0["tipo_perturb"] != PERT_FADING:
+            _chart_head("Cómo se reparte el ruido",
+                        "Izquierda: espectro (un tono es una línea; los impulsos, ruido casi plano). "
+                        "Derecha: histograma contra la gaussiana de igual potencia.")
             st.plotly_chart(_fig_pert_ruido(_PARAMS), width="stretch")
         if d0["tipo_perturb"] == PERT_TONO:
             _callout("concepto", "Una línea en el espectro",
@@ -1867,9 +2017,19 @@ with tab_muestreo:
     st.progress(min(1.0, margen / 2.0), text=texto_nyq)
 
     _section("Reconstrucción: sinc vs. unir los puntos", "🧪")
+    _chart_head("Muestras tomadas vs. reconstrucción",
+                "Reproducí la animación y seguí el panel de error: cae en picada cuando la "
+                "reconstrucción sinc ya puede seguir a la señal.",
+                derecha=f"fs = {d0['fs']} Hz · error final {d0['error_recon']:.2f} %")
+    _legend_row([("rgba(230,224,233,0.55)", "Original (TX)", "dash"),
+                 ("#8ab4f8", "Muestras", "dot"),
+                 ("#f5b04b", "Unir puntos (lineal)", "dash"),
+                 ("#7ee2b8", "Sinc (correcta)"),
+                 ("#e57373", "Error")])
     st.plotly_chart(_fig_recon(_PARAMS), width="stretch")
-    st.caption("Verde: señal original · puntos: muestras tomadas · gris: unir los puntos (lineal) · "
-               "celeste: reconstrucción sinc (correcta) · rojo: error sinc vs original.")
+    st.caption("El error se mide como RMS y se dibuja en % de la señal, así el eje no cambia con la "
+               "amplitud y el número de la animación coincide con el de la tarjeta (reconstrucción "
+               "con todas las muestras).")
 
     mr1, mr2 = st.columns([1, 2])
     with mr1:
@@ -1957,14 +2117,15 @@ with tab_shannon:
                   f"<span style='color:#7ee2b8'>{_fmt_kbps(d0['capacidad_kbps'])}</span> "
                   f"&nbsp;·&nbsp; R = {d0['tasa_deseada_kbps']:.0f} kbps")
     st.markdown(
-        f"<div style='background:#1d1b20;border:1px solid #2b2a2e;border-radius:12px;padding:14px 18px;"
-        f"text-align:center;margin:6px 0 4px;'>"
-        f"<div style='color:#9ea3b0;font-size:12px;letter-spacing:.06em;margin-bottom:6px;'>LA CUENTA CON LOS VALORES ACTUALES</div>"
-        f"<div style='font-size:19px;font-weight:600;color:#e6e0e9;'>"
-        f"{cuenta}</div></div>",
+        f"<div class='formula'><div class='f-lab'>La cuenta con los valores actuales</div>"
+        f"<div class='f-val'>{cuenta}</div></div>",
         unsafe_allow_html=True)
 
     _section("Análisis: capacidad según el ancho de banda", "📈")
+    _chart_head("Capacidad C(B) con ruido N = N₀·B",
+                "Zona roja: la tasa requerida no entra. Zona verde: entra. El tope gris es "
+                "P/(N₀·ln 2); ningún ancho de banda lo supera.",
+                derecha=f"B = {d0['ancho_banda_khz']} kHz")
     st.plotly_chart(_fig_shannon(_PARAMS), width="stretch")
 
     if d0["ideal"]:
@@ -2092,11 +2253,21 @@ with tab_digital:
         _chip("📶", "Eficiencia espectral ideal",
               "—" if minfo["familia"] == "FSK" else f"{minfo['k']} bit/s/Hz", "#c4c7d1")
 
+    _chart_head("Portadora modulada por los símbolos",
+                "Cada tramo es un símbolo; arriba, los bits que representa. La banda alternada "
+                "separa un símbolo del siguiente.",
+                derecha=f"{mod} · {minfo['k']} bit/sím")
     st.plotly_chart(_fig_portadora(mod), width="stretch")
     vc_a, vc_b = st.columns(2)
     with vc_a:
+        _chart_head("Constelación recibida",
+                    "Líneas: fronteras de decisión. Un punto rojo es un símbolo que cayó del lado "
+                    "equivocado y produce error.")
         st.plotly_chart(_fig_constelacion(mod, g_arg, st.session_state["seed"]), width="stretch")
     with vc_b:
+        _chart_head("BER según Eb/N0",
+                    "La curva resaltada es la elegida; la zona roja queda por debajo del límite de "
+                    "Shannon, donde ningún código funciona.")
         st.plotly_chart(_fig_ber(mod, g_arg), width="stretch")
 
     _TEXTO_FAMILIA = {
@@ -2121,6 +2292,10 @@ with tab_digital:
     _callout("concepto", f"Qué es {mod}", _TEXTO_FAMILIA[minfo["familia"]])
 
     _section("Cuánto cuesta cada bit por hertz", "💱")
+    _chart_head("Eficiencia espectral vs. Eb/N0 exigido (BER = 10⁻⁵)",
+                "Cada punto es una modulación (pasá el puntero para identificarlas): a la derecha, "
+                "más Eb/N0; arriba, más bits por segundo y por hertz. Ninguna cruza la línea de Shannon.",
+                derecha="resaltada: " + mod)
     st.plotly_chart(_fig_eficiencia(mod), width="stretch")
     _callout("proba", "Cómo se conecta con Shannon",
              "Cada punto es una modulación: a la derecha, más Eb/N0 para llegar a BER = 10⁻⁵; arriba, más bits "
@@ -2170,10 +2345,8 @@ with st.expander("📖 Guía de lectura — cómo leer este simulador"):
     with gg1:
         def _guide(e, ti, tx):
             st.markdown(
-                f"<div style='background:#1d1b20;border-radius:12px;border:1px solid #2b2a2e;"
-                f"padding:12px 14px;height:100%;'>"
-                f"<div style='color:#8ab4f8;font-weight:600;font-size:13px;margin-bottom:6px;'>{e} {ti}</div>"
-                f"<div style='color:#c4c7d1;font-size:12.5px;line-height:1.5;'>{tx}</div></div>",
+                f"<div class='gcard'><div class='gtitle'>{e} {ti}</div>"
+                f"<div class='gtxt'>{tx}</div></div>",
                 unsafe_allow_html=True)
         _guide("🎼", "Señal",
                "El osciloscopio corre en el navegador: la curva verde es la TX y la naranja la RX. La "
