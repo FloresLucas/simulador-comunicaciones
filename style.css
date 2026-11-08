@@ -1052,3 +1052,62 @@ section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p { font-siz
     scale: none !important;
   }
 }
+
+
+/* ---------- Hero vivo: onda TX → RX y color de estado ---------- */
+.hero { position: relative; --hs: var(--ok); --hs-rgb: 126, 226, 184; }
+.hero.st-warn { --hs: var(--warn); --hs-rgb: 245, 176, 75; }
+.hero.st-bad  { --hs: var(--error); --hs-rgb: 229, 115, 115; }
+.hero { border-bottom-color: rgba(var(--hs-rgb), .28); }
+.hero::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(var(--hs-rgb), .9), transparent) no-repeat;
+  background-size: 30% 100%; background-position: -40% 0; opacity: .85; pointer-events: none;
+}
+.hero-wave {
+  flex: 1 1 260px; min-width: 180px; max-width: 420px; height: 58px; align-self: center;
+  overflow: visible; filter: drop-shadow(0 0 6px rgba(var(--hs-rgb), .18));
+}
+.hero-wave path { fill: none; stroke-width: 1.7; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.hero-wave .hw-tx { stroke: var(--ok); }
+.hero-wave .hw-rx { stroke: var(--hs); }
+.hero-wave .hw-band { fill: rgba(var(--hs-rgb), .10); stroke: rgba(var(--hs-rgb), .35); stroke-dasharray: 3 3; }
+.hero-wave .hw-lbl { fill: var(--text-muted); font: 500 7px var(--sans); letter-spacing: .12em; }
+@media (prefers-reduced-motion: no-preference) {
+  .hw-flow { animation: hwFlow 5.5s linear infinite; }
+  .hero::after { animation: heroSweep 5.5s var(--ease) infinite; }
+  .hero.st-bad::after { animation-duration: 2.6s; }
+  .hero.st-bad { animation: heroAlert .9s var(--ease-out) 1; }
+}
+@keyframes hwFlow { from { transform: translateX(-360px); } to { transform: translateX(0); } }
+@keyframes heroSweep { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+@keyframes heroAlert {
+  0% { box-shadow: 0 10px 28px -14px rgba(229, 115, 115, .75); }
+  100% { box-shadow: 0 10px 28px -14px rgba(229, 115, 115, 0); }
+}
+@media (max-width: 760px) { .hero-wave { display: none; } }
+body:has(.pres-on) .hero-wave { height: 44px; }
+.hero > div:first-child { flex: 0 1 52%; }
+.hero-wave { flex: 1 1 300px; min-width: 260px; }
+
+/* ---------- Contadores que cuentan hasta su valor (CSS puro) ---------- */
+@property --cn { syntax: '<number>'; inherits: false; initial-value: 0; }
+.cnt-fb { display: inline; }
+@supports (width: round(down, 1.5px, 1px)) {
+  .cnt {
+    --cn: var(--to);
+    --sc: round(nearest, var(--cn) * var(--m, 10), 1);
+    counter-reset: ci round(down, var(--sc) / var(--m, 10), 1) cf calc(var(--sc) - round(down, var(--sc) / var(--m, 10), 1) * var(--m, 10));
+  }
+  .cnt.dp0 { --m: 1; } .cnt.dp1 { --m: 10; } .cnt.dp2 { --m: 100; }
+  .cnt .cnt-fb { display: none; }
+  .cnt.dp0::after { content: counter(ci); }
+  .cnt.dp1::after { content: counter(ci) "." counter(cf); }
+  .cnt.dp2::after { content: counter(ci) "." counter(cf, decimal-leading-zero); }
+  @media (prefers-reduced-motion: no-preference) {
+    .cnt.par0 { animation: cntUpA 600ms var(--ease-out) backwards; }
+    .cnt.par1 { animation: cntUpB 600ms var(--ease-out) backwards; }
+  }
+}
+@keyframes cntUpA { from { --cn: var(--fr); } }
+@keyframes cntUpB { from { --cn: var(--fr); } }

@@ -33,7 +33,7 @@ except ImportError:
 st.set_page_config(
     page_title="Simulador TFI - Comunicaciones",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
 )
 
 # CSS modular: todo el diseño vive en style.css (ver .clinerules).
@@ -378,6 +378,76 @@ def _nyq_badge(d):
     if d["senoidal"]:
         return "bad", f"Aliasing · fs/2f = {ratio:.2f}"
     return "warn", f"Pulso · fs/2f = {ratio:.2f}"
+
+
+def _hero_wave(d):
+    """SVG decorativo del hero: la onda sale limpia de TX y llega castigada a RX.
+    El ruido y la atenuación dibujados salen del modelo (σ ef. / amplitud recibida)."""
+    W, H, P = 360, 64, 60          # ancho de un ciclo de bucle, alto y periodo
+    mid = H / 2
+    A_tx = 20.0
+    ratio_att = d["amplitud_atenuada"] / max(d["amplitud"], 1e-9)
+    A_rx = max(A_tx * ratio_att, 4.0)
+    rel = d["sigma"] / max(d["amplitud_atenuada"], 1e-9)
+    jit = float(min(13.0, 13.0 * rel / 0.6)) if np.isfinite(rel) else 13.0
+    rng = np.random.default_rng(11)
+    ruido = rng.normal(0.0, 1.0, W // 3 + 1)
+
+    def y_ideal(x, A):
+        ph = 2 * np.pi * x / P
+        return A * (np.sin(ph) if d["senoidal"] else np.tanh(4 * np.sin(ph)))
+
+    def trazo(A, con_ruido):
+        pts = []
+        for rep in range(2):
+            for i in range(W // 3 + 1):
+                x = i * 3
+                y = y_ideal(x, A) + (jit * ruido[i] if con_ruido else 0.0)
+                pts.append(f"{x + rep * W:.0f},{mid - np.clip(y, -mid + 2, mid - 2):.1f}")
+        return "M" + " L".join(pts)
+
+    limpio, sucio = trazo(A_tx, False), trazo(A_rx, True)
+    return (
+        f"<svg class='hero-wave' viewBox='0 0 {W} {H}' preserveAspectRatio='none' aria-hidden='true'>"
+        "<defs><clipPath id='hw-a'><rect x='0' y='0' width='170' height='64'/></clipPath>"
+        "<clipPath id='hw-b'><rect x='190' y='0' width='170' height='64'/></clipPath></defs>"
+        "<rect class='hw-band' x='170' y='0' width='20' height='64' rx='3'/>"
+        f"<g clip-path='url(#hw-a)'><g class='hw-flow'><path class='hw-tx' d='{limpio}'/></g></g>"
+        f"<g clip-path='url(#hw-b)'><g class='hw-flow'><path class='hw-rx' d='{sucio}'/></g></g>"
+        "<text class='hw-lbl' x='6' y='10'>TX</text>"
+        "<text class='hw-lbl' x='354' y='10' text-anchor='end'>RX</text></svg>"
+    )
+
+
+def _estado_enlace(d):
+    """'ok' / 'warn' / 'bad' según R ≤ C y Nyquist: tiñe todo el hero."""
+    r_ok = d["r_bps"] <= d["capacidad_kbps"] * 1000
+    nyq, _ = _nyq_badge(d)
+    if not r_ok or nyq == "bad":
+        return "bad"
+    return "warn" if nyq == "warn" else "ok"
+
+
+def _cnt(x, dec=1, sufijo="", clave="cnt"):
+    """Número que 'cuenta' desde el valor anterior hasta el nuevo (solo CSS).
+    Streamlit reutiliza el nodo del DOM entre reruns, así que una animación con el mismo
+    nombre no se reinicia: se alterna entre dos animaciones idénticas (cntUpA/cntUpB)
+    cada vez que el valor cambia. Si no es finito o es negativo queda como texto plano;
+    el texto real siempre está en el DOM como respaldo."""
+    sess = st.session_state.setdefault("_cnt", {})
+    prev = sess.get(clave)
+    if not np.isfinite(x) or x < 0:
+        sess[clave] = (None, 0)
+        return f"{x:.{dec}f}{sufijo}" if np.isfinite(x) else f"∞{sufijo}"
+    if prev is None or prev[0] is None:
+        par, desde = 0, x * 0.55
+    elif round(prev[0], dec) != round(x, dec):
+        par, desde = 1 - prev[1], prev[0]
+    else:
+        par, desde = prev[1], prev[0]
+    sess[clave] = (x, par)
+    return (f"<span class='cnt dp{dec} par{par}' style='--to:{x:.{dec}f};--fr:{desde:.{dec + 2}f}'>"
+            f"<span class='cnt-fb'>{x:.{dec}f}</span></span>{sufijo}")
 
 
 def _fmt_db(x):
@@ -1313,7 +1383,7 @@ def _fig_ber(mod, g_db):
         fig.add_trace(go.Scatter(
             x=[gx], y=[by], mode="markers", showlegend=False, hoverinfo="skip",
             marker=dict(color="#f5b04b", size=11, line=dict(color="#141218", width=2))))
-        fig.add_annotation(x=gx, y=by, text=f"{mod} · {g_db:.1f} dB → BER {_fmt_ber(by)}",
+        fig.add_annotation(x=gx, y=float(np.log10(by)), text=f"{mod} · {g_db:.1f} dB → BER {_fmt_ber(by)}",
                            showarrow=True, arrowcolor="#f5b04b", ax=48, ay=-30,
                            font=dict(color="#f5b04b", size=11.5),
                            bgcolor="rgba(20,18,24,0.8)", bordercolor="rgba(245,176,75,0.35)",
@@ -1749,18 +1819,19 @@ with st.sidebar:
                        mime="text/csv", width="stretch", key="dl_sen")
 
 # Modo presentación sin <style> inline: el contenedor con key activa las reglas de
-# style.css (body:has(.st-key-pres) …). Siempre se emite el mismo elemento para que
+# style.css (body:has(.pres-on) …). Siempre se emite el mismo elemento para que
 # Streamlit no remonte la pestaña activa al activar el modo.
 _snr = d0["snr_db"]
 _B = st.session_state.get("base")
 _r_ok = d0["r_bps"] <= d0["capacidad_kbps"] * 1000
 _nyq_cls, _nyq_txt = _nyq_badge(d0)
 st.markdown(
-    f"<div class='hero{' pres-on' if st.session_state.get('modo_pres') else ''}'><div>"
+    f"<div class='hero st-{_estado_enlace(d0)}{' pres-on' if st.session_state.get('modo_pres') else ''}'><div>"
     "<div class='kicker'>TFI · Comunicaciones</div>"
     "<h1>Simulador integral de sistemas de comunicación</h1>"
     "<div class='sub'>Enlace completo <b>TX → canal → RX</b> · señal, muestreo, Shannon "
     "y modulación digital</div></div>"
+    f"{_hero_wave(d0)}"
     "<div class='hero-badges'>"
     f"<span class='hbadge {'ok' if _r_ok else 'bad'}'><i></i>{'R ≤ C' if _r_ok else 'R > C'}"
     f" · {d0['tasa_deseada_kbps']:.0f} / {_fmt_kbps(d0['capacidad_kbps'])}</span>"
@@ -1783,7 +1854,7 @@ with st.container(key="chain"):
         _arrow()
     with c2:
         _chain_card("CANAL", "🌊", "#c4c7d1",
-                    f"SNR {_fmt_db(_snr)}",
+                    f"SNR {_cnt(_snr, 1, ' dB', 'snr')}",
                     [("Atenuación", f"{st.session_state['atenuacion_db']:.1f} dB"),
                      ("Ruido σ ef.", f"{d0['sigma']:.2f} V" + (" · ráfaga" if d0["burst"] else ""))]
                     + ([("Perturbación", f"{d0['tipo_perturb']} {d0['intens_perturb']} %")]
@@ -1794,7 +1865,7 @@ with st.container(key="chain"):
         _arrow()
     with c3:
         _chain_card("RX · RECEPTOR", "📻", "#f5b04b",
-                    f"{d0['amplitud_atenuada']:.2f} V",
+                    _cnt(d0['amplitud_atenuada'], 2, ' V', 'vrx'),
                     [("Potencia RX", f"{d0['potencia_senal']:.2f} W"),
                      ("Capacidad C", _fmt_kbps(d0["capacidad_kbps"]))]
                     + ([("Δ C vs base", _delta_html(d0["capacidad_kbps"], _B["capacidad_kbps"], "kbps"))] if _B else []))
@@ -2234,15 +2305,24 @@ with tab_digital:
     sim = _simular_modulacion(mod, g_arg, st.session_state["seed"])
     ser_m = sim["ser"]
 
+    _req = _ebn0_requerido(mod, 1e-5)
+    _meta_ok = bool(ber_t <= 1e-5)
+    _marg = (g_db - _req) if (np.isfinite(g_db) and np.isfinite(_req)) else float("nan")
+    _verdict(_meta_ok, f"Meta BER 10⁻⁵ · {'alcanzada' if _meta_ok else 'no alcanzada'}",
+             f"<b>{minfo['label']}</b> necesita ≈ <b>{_fmt_db(_req)}</b> de Eb/N0 para BER 10⁻⁵; el enlace aporta "
+             f"<b>{_fmt_db(g_db)}</b>"
+             + (f" ({'sobran' if _marg >= 0 else 'faltan'} {abs(_marg):.1f} dB)." if np.isfinite(_marg) else ".")
+             + f" BER teórica: <b>{_fmt_ber(ber_t)}</b>.")
+
     k1, k2, k3, k4 = st.columns(4)
     with k1:
         _chip("🎚️", "Eb/N0", _fmt_db(g_db), _snr_color(g_db if np.isfinite(g_db) else 99))
     with k2:
         _chip("🎯", "BER teórica", _fmt_ber(ber_t), "#8ab4f8")
     with k3:
-        _chip("🧮", "Error de símbolo teórico", _fmt_ber(ser_t), "#f5b04b")
+        _chip("🧮", "Err. símbolo teórico", _fmt_ber(ser_t), "#f5b04b")
     with k4:
-        _chip("🎲", f"Error de símbolo medido ({sim['n']:,} símbolos)".replace(",", "."),
+        _chip("🎲", f"Err. símbolo medido ({sim['n'] // 1000} mil)",
               _fmt_ber(ser_m) if ser_m > 0 else f"0 (< {_fmt_ber(1 / sim['n'])})", "#7ee2b8")
     h1, h2, h3 = st.columns(3)
     with h1:

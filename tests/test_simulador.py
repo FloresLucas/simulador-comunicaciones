@@ -64,7 +64,7 @@ def test_escenarios_sin_excepciones(estado):
 def test_snr_de_la_tarjeta_coincide_con_la_teoria(B):
     at = run(ancho_banda_khz=B)
     sin_error(at)
-    snr = float(buscar(at, r"SNR (-?[0-9.]+) dB"))
+    snr = float(buscar(at, r"SNR (?:<[^>]+>)*(-?[0-9.]+)(?:<[^>]+>)* dB"))
     potencia = (5 * 10 ** (-3 / 20)) ** 2 / 2
     teorico = 10 * math.log10(potencia / (0.25 * B / 10))
     assert abs(snr - teorico) < 0.6          # el ruido es una realización finita
@@ -120,7 +120,7 @@ TODAS = ["OOK", "4-ASK", "2-FSK", "BPSK", "DPSK", "QPSK", "8-PSK", "16-PSK",
 
 
 def _ser(at):
-    teorico = float(chip(at, "ERROR DE SÍMBOLO TEÓRICO"))
+    teorico = float(chip(at, "ERR. SÍMBOLO TEÓRICO"))
     medido = float(buscar(at, r"MEDIDO[^<]*</div><div[^>]*>([^<]*)<").split()[0])
     return teorico, medido
 
@@ -163,7 +163,7 @@ TONO, IMPULSO, FADING = "Interferencia de tono", "Ruido impulsivo", "Desvanecimi
 
 
 def snr_db(at):
-    return float(buscar(at, r"SNR (-?[0-9.]+) dB"))
+    return float(buscar(at, r"SNR (?:<[^>]+>)*(-?[0-9.]+)(?:<[^>]+>)* dB"))
 
 
 @pytest.mark.parametrize("tipo", [TONO, IMPULSO, FADING])
@@ -205,3 +205,29 @@ def test_casos_de_perturbacion(caso):
     [b for b in at.button if b.label == "▶ Cargar caso"][0].click().run()
     sin_error(at)
     assert at.session_state["tipo_perturb"] != "Ninguna (solo AWGN)"
+
+
+def test_anotacion_ber_dentro_del_rango_log():
+    """En un eje logarítmico las anotaciones van en log10: debe caer dentro de [-6, 0]."""
+    import json
+    at = run()
+    anots = []
+    for el in at.get("plotly_chart"):
+        fig = json.loads(el.proto.spec)
+        anots += [a for a in fig.get("layout", {}).get("annotations", [])
+                  if "BER" in str(a.get("text", "")) and "→" in str(a.get("text", ""))]
+    assert anots, "no se encontró la anotación de BER"
+    for a in anots:
+        assert -6 <= a["y"] <= 0, a
+
+
+def test_readme_apunta_a_la_carpeta_de_tests():
+    readme = (Path(APP).parent / "README.md").read_text(encoding="utf-8")
+    assert "pytest tests" in readme and (Path(APP).parent / "tests").is_dir()
+
+
+def test_veredicto_ber_en_digital():
+    at = run(mod_sel="BPSK", usar_enlace=False, ebn0_manual=12.0)
+    assert "META BER 10⁻⁵ · ALCANZADA" in md(at).upper()
+    at = run(mod_sel="64-QAM", usar_enlace=False, ebn0_manual=5.0)
+    assert "NO ALCANZADA" in md(at).upper()
