@@ -61,19 +61,25 @@ No introducir colores fuera de esta paleta (salvo grises neutros de apoyo).
 
 - Las animaciones viven en `style.css` (sección "Movimiento e interacción").
   No agregar JS ni bloques `<style>` inline para animar.
-- Intensidad sutil: `--dur-1` 160 ms (micro), `--dur-2` 260 ms (hover),
-  `--dur-3` 560 ms (revelado). Easing `--ease` / `--ease-out`.
-- Animar solo `transform`, `translate`, `opacity` y `filter`; nunca
+- Intensidad media-alta: `--dur-1` 170 ms (micro), `--dur-2` 300 ms (hover),
+  `--dur-3` 650 ms (revelado). Easing `--ease` / `--ease-out`.
+- Animar solo `transform`, `translate`, `scale`, `opacity` y `filter`; nunca
   `top/left/width/height` para evitar reflow.
 - El revelado al hacer scroll usa `animation-timeline: view()` dentro de
   `@supports` y `prefers-reduced-motion: no-preference`. Si el navegador no lo
   soporta, el contenido se ve normal: nunca dejar estados ocultos por defecto.
+- Cambio de pestaña: Streamlit fuerza el montaje de los paneles
+  (`data-testid="stTabPanel"`) y oculta los inactivos con `display: none`. Al
+  activarse, las animaciones CSS se reinician solas: animar el panel, sus
+  contenedores de primer nivel (`stElementContainer` / `stLayoutWrapper`) con
+  delays escalonados de 35 ms y el barrido del borde superior con
+  `background-position`. No usar JS ni depender de remontar nodos.
 - No animar canvas, iframes ni el interior de Plotly: interfiere con el
   hover/zoom de los gráficos.
 - Todo el movimiento debe desactivarse con `prefers-reduced-motion: reduce`
-  dejando el contenido visible.
+  dejando el contenido visible (opacity 1, sin translate/scale).
 - Verificar en navegador que mover sliders (rerun de Streamlit) no re-dispara
-  animaciones de entrada ni produce saltos de layout.
+  la animación de pestaña ni produce saltos de layout.
 
 ## Convenciones del código
 

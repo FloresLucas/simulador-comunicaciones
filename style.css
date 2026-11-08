@@ -29,9 +29,9 @@
   /* Movimiento (ver .clinerules › Movimiento) */
   --ease: cubic-bezier(.22, .61, .36, 1);
   --ease-out: cubic-bezier(.16, 1, .3, 1);
-  --dur-1: 160ms;
-  --dur-2: 260ms;
-  --dur-3: 560ms;
+  --dur-1: 170ms;
+  --dur-2: 300ms;
+  --dur-3: 650ms;
 }
 
 /* ---------- Base ---------- */
@@ -509,8 +509,8 @@ div[data-baseweb="select"] > div,
 div[data-testid="stNumberInput"] input,
 div[data-testid="stTextInput"] input { border-radius: var(--radius-sm) !important; }
 
-/* Sliders: pista fina y pulgar limpio */
-[data-testid="stSlider"] [data-baseweb="slider"] div[role="slider"] {
+/* Sliders: pista fina y pulgar limpio (Streamlit 1.63 no usa [role=slider]) */
+[data-testid="stSlider"] div:has(> [data-testid="stSliderThumbValue"]) {
   box-shadow: 0 0 0 3px rgba(138, 180, 248, .16);
 }
 [data-testid="stSliderThumbValue"] *, [data-testid="stSliderThumbValue"], [data-testid="stSliderTickBarMin"],
@@ -708,9 +708,9 @@ div[data-testid="stHorizontalBlock"] { gap: .7rem; }
   position: absolute;
   inset: 0 0 auto 0;
   height: 48%;
-  background: linear-gradient(180deg, rgba(138, 180, 248, .10), transparent 80%);
+  background: linear-gradient(180deg, rgba(138, 180, 248, .12), transparent 80%);
   background: linear-gradient(180deg,
-              color-mix(in srgb, var(--accent, var(--info)) 12%, transparent), transparent 80%);
+              color-mix(in srgb, var(--accent, var(--info)) 15%, transparent), transparent 80%);
   opacity: 0;
   transition: opacity var(--dur-2) var(--ease);
   pointer-events: none;
@@ -719,15 +719,15 @@ div[data-testid="stHorizontalBlock"] { gap: .7rem; }
 .card .card-ico { transition: transform var(--dur-2) var(--ease); }
 .card .card-val { transition: filter var(--dur-2) var(--ease); }
 .card:hover {
-  transform: translateY(-3px);
-  border-color: #3a3840;
-  border-color: color-mix(in srgb, var(--accent, var(--info)) 45%, var(--border));
-  box-shadow: 0 2px 4px rgba(0, 0, 0, .35), 0 14px 32px -14px rgba(0, 0, 0, .9),
-              0 0 0 1px color-mix(in srgb, var(--accent, var(--info)) 12%, transparent);
+  transform: translateY(-4px);
+  border-color: #3f3d45;
+  border-color: color-mix(in srgb, var(--accent, var(--info)) 50%, var(--border));
+  box-shadow: 0 2px 5px rgba(0, 0, 0, .38), 0 16px 36px -14px rgba(0, 0, 0, .92),
+              0 0 0 1px color-mix(in srgb, var(--accent, var(--info)) 14%, transparent);
 }
 .card:hover::after { opacity: 1; }
-.card:hover .card-ico { transform: scale(1.1); }
-.card:hover .card-val { filter: brightness(1.12); }
+.card:hover .card-ico { transform: scale(1.14); }
+.card:hover .card-val { filter: brightness(1.16); }
 
 /* ---------- Hover: chips de métricas ---------- */
 .chip {
@@ -737,11 +737,11 @@ div[data-testid="stHorizontalBlock"] { gap: .7rem; }
 }
 .chip-ico { transition: transform var(--dur-2) var(--ease); }
 .chip:hover {
-  transform: translateX(2px);
-  background: #232127;
-  border-left-color: color-mix(in srgb, var(--line, var(--info)) 70%, var(--border));
+  transform: translateX(3px);
+  background: #242229;
+  border-left-color: color-mix(in srgb, var(--line, var(--info)) 75%, var(--border));
 }
-.chip:hover .chip-ico { transform: scale(1.12); }
+.chip:hover .chip-ico { transform: scale(1.16); }
 
 /* ---------- Hover: cadena TX → canal → RX ---------- */
 .chain-card {
@@ -750,16 +750,16 @@ div[data-testid="stHorizontalBlock"] { gap: .7rem; }
               background var(--dur-2) var(--ease);
 }
 .chain-card:hover {
-  transform: translateY(-2px);
-  background: linear-gradient(180deg, rgba(48, 45, 53, .6), rgba(29, 27, 32, .98));
-  box-shadow: 0 10px 26px -16px rgba(0, 0, 0, .95);
+  transform: translateY(-3px);
+  background: linear-gradient(180deg, rgba(52, 49, 58, .65), rgba(29, 27, 32, .98));
+  box-shadow: 0 14px 30px -16px rgba(0, 0, 0, .98);
 }
 .chain-card .cc-dot { transition: transform var(--dur-2) var(--ease); }
-.chain-card:hover .cc-dot { transform: scale(1.35); }
+.chain-card:hover .cc-dot { transform: scale(1.5); }
 .cc-arrow {
   transition: transform var(--dur-2) var(--ease), color var(--dur-2) var(--ease);
 }
-.st-key-chain:hover .cc-arrow { transform: translateX(3px); color: var(--info); }
+.st-key-chain:hover .cc-arrow { transform: translateX(5px); color: var(--info); }
 
 /* ---------- Hover: badges de estado ---------- */
 .hbadge {
@@ -786,21 +786,21 @@ div[data-testid="stHorizontalBlock"] { gap: .7rem; }
 }
 .callout .co-ico { transition: transform var(--dur-2) var(--ease); }
 .callout:hover {
-  border-color: color-mix(in srgb, var(--c, var(--info)) 55%, var(--border));
+  border-color: color-mix(in srgb, var(--c, var(--info)) 62%, var(--border));
 }
-.callout:hover .co-ico { transform: scale(1.12) rotate(-5deg); }
+.callout:hover .co-ico { transform: scale(1.18) rotate(-7deg); }
 
 .verdict, .gcard, .formula {
   transition: transform var(--dur-2) var(--ease),
               border-color var(--dur-2) var(--ease),
               box-shadow var(--dur-2) var(--ease);
 }
-.verdict:hover, .gcard:hover, .formula:hover { transform: translateY(-2px); }
+.verdict:hover, .gcard:hover, .formula:hover { transform: translateY(-3px); }
 .verdict:hover {
-  box-shadow: 0 12px 30px -18px rgba(0, 0, 0, .95),
-              0 0 0 1px color-mix(in srgb, var(--c, var(--ok)) 15%, transparent);
+  box-shadow: 0 14px 34px -18px rgba(0, 0, 0, .98),
+              0 0 0 1px color-mix(in srgb, var(--c, var(--ok)) 18%, transparent);
 }
-.gcard:hover { border-color: #3a3840; border-color: color-mix(in srgb, var(--info) 35%, var(--border)); }
+.gcard:hover { border-color: #3f3d45; border-color: color-mix(in srgb, var(--info) 40%, var(--border)); }
 
 /* Sheen diagonal en la fórmula destacada */
 .formula { position: relative; overflow: hidden; }
@@ -810,9 +810,9 @@ div[data-testid="stHorizontalBlock"] { gap: .7rem; }
   top: 0; bottom: 0;
   width: 42%;
   left: 0;
-  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .07), transparent);
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .09), transparent);
   transform: translateX(-140%) skewX(-16deg);
-  transition: transform .7s var(--ease-out);
+  transition: transform .6s var(--ease-out);
   pointer-events: none;
 }
 .formula:hover::after { transform: translateX(340%) skewX(-16deg); }
@@ -825,10 +825,10 @@ div.stButton > button, div.stDownloadButton > button {
               transform var(--dur-1) var(--ease);
 }
 div.stButton > button:hover, div.stDownloadButton > button:hover {
-  transform: translateY(-1px);
+  transform: translateY(-1.5px);
 }
 div.stButton > button:active, div.stDownloadButton > button:active {
-  transform: scale(.98);
+  transform: scale(.975);
 }
 
 .stTabs [data-testid="stTab"] {
@@ -837,28 +837,94 @@ div.stButton > button:active, div.stDownloadButton > button:active {
               box-shadow var(--dur-2) var(--ease);
 }
 .stTabs [data-testid="stTab"][aria-selected="true"] {
-  animation: tabGlow 4.8s ease-in-out infinite;
+  animation: tabGlow 4.8s ease-in-out infinite, tabPop .38s var(--ease-out);
 }
 
-[data-testid="stSlider"] [data-baseweb="slider"] div[role="slider"] {
+[data-testid="stSlider"] div:has(> [data-testid="stSliderThumbValue"]) {
   transition: box-shadow var(--dur-1) var(--ease),
-              transform var(--dur-1) var(--ease);
+              scale var(--dur-1) var(--ease);
 }
-[data-testid="stSlider"] [data-baseweb="slider"] div[role="slider"]:hover {
-  transform: scale(1.08);
-  box-shadow: 0 0 0 5px rgba(138, 180, 248, .2);
+[data-testid="stSlider"] div:has(> [data-testid="stSliderThumbValue"]):hover {
+  scale: 1.1;
+  box-shadow: 0 0 0 6px rgba(138, 180, 248, .22);
 }
-[data-testid="stSlider"] [data-baseweb="slider"] div[role="slider"]:active {
-  transform: scale(1.02);
+[data-testid="stSlider"] div:has(> [data-testid="stSliderThumbValue"]):active {
+  scale: 1.03;
 }
 
 [data-testid="stExpander"] summary svg { transition: transform var(--dur-2) var(--ease); }
-[data-testid="stExpander"] summary:hover svg { transform: translateX(2px); }
+[data-testid="stExpander"] summary:hover svg { transform: translateX(3px); }
+
+/* ---------- Entrada de contenido al cambiar de pestaña ----------
+   Streamlit fuerza el montaje de los paneles y oculta los inactivos con
+   display:none. Al activarse, la animación arranca de nuevo: no hace falta JS.
+   El barrido usa background-position para no desbordar el panel. */
+@keyframes tabPanelIn {
+  from { opacity: 0; scale: .995; }
+  to   { opacity: 1; scale: 1; }
+}
+@keyframes tabBlockIn {
+  from { opacity: 0; translate: 0 10px; scale: .998; }
+  to   { opacity: 1; translate: 0 0; scale: 1; }
+}
+@keyframes tabSweep {
+  0%   { background-position: -60% 0; opacity: 0; }
+  15%  { opacity: 1; }
+  100% { background-position: 160% 0; opacity: 0; }
+}
+@keyframes tabPop {
+  0%   { scale: .94; }
+  55%  { scale: 1.04; }
+  100% { scale: 1; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-testid="stTabPanel"] {
+    position: relative;
+    animation: tabPanelIn var(--dur-2) var(--ease-out) backwards;
+  }
+  [data-testid="stTabPanel"]::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background-image: linear-gradient(90deg, transparent,
+                      rgba(138, 180, 248, .85), rgba(126, 226, 184, .6), transparent);
+    background-size: 45% 100%;
+    background-repeat: no-repeat;
+    background-position: 160% 0;
+    opacity: 0;
+    pointer-events: none;
+    animation: tabSweep .7s var(--ease-out) backwards;
+  }
+  [data-testid="stTabPanel"] > [data-testid="stVerticalBlock"] >
+  :is([data-testid="stElementContainer"], [data-testid="stLayoutWrapper"]) {
+    animation: tabBlockIn .42s var(--ease-out) backwards;
+  }
+  [data-testid="stTabPanel"] > [data-testid="stVerticalBlock"] >
+  :is([data-testid="stElementContainer"], [data-testid="stLayoutWrapper"]):nth-child(1) { animation-delay: 0ms; }
+  [data-testid="stTabPanel"] > [data-testid="stVerticalBlock"] >
+  :is([data-testid="stElementContainer"], [data-testid="stLayoutWrapper"]):nth-child(2) { animation-delay: 35ms; }
+  [data-testid="stTabPanel"] > [data-testid="stVerticalBlock"] >
+  :is([data-testid="stElementContainer"], [data-testid="stLayoutWrapper"]):nth-child(3) { animation-delay: 70ms; }
+  [data-testid="stTabPanel"] > [data-testid="stVerticalBlock"] >
+  :is([data-testid="stElementContainer"], [data-testid="stLayoutWrapper"]):nth-child(4) { animation-delay: 105ms; }
+  [data-testid="stTabPanel"] > [data-testid="stVerticalBlock"] >
+  :is([data-testid="stElementContainer"], [data-testid="stLayoutWrapper"]):nth-child(5) { animation-delay: 140ms; }
+  [data-testid="stTabPanel"] > [data-testid="stVerticalBlock"] >
+  :is([data-testid="stElementContainer"], [data-testid="stLayoutWrapper"]):nth-child(6) { animation-delay: 175ms; }
+  [data-testid="stTabPanel"] > [data-testid="stVerticalBlock"] >
+  :is([data-testid="stElementContainer"], [data-testid="stLayoutWrapper"]):nth-child(7) { animation-delay: 210ms; }
+  [data-testid="stTabPanel"] > [data-testid="stVerticalBlock"] >
+  :is([data-testid="stElementContainer"], [data-testid="stLayoutWrapper"]):nth-child(8) { animation-delay: 245ms; }
+  [data-testid="stTabPanel"] > [data-testid="stVerticalBlock"] >
+  :is([data-testid="stElementContainer"], [data-testid="stLayoutWrapper"]):nth-child(n+9) { animation-delay: 280ms; }
+}
 
 /* ---------- Revelado al hacer scroll (CSS scroll-driven) ---------- */
 @keyframes revealUp {
-  from { opacity: 0; translate: 0 12px; }
-  to   { opacity: 1; translate: 0 0; }
+  from { opacity: 0; translate: 0 20px; scale: .97; }
+  to   { opacity: 1; translate: 0 0; scale: 1; }
 }
 
 @supports (animation-timeline: view()) {
@@ -874,26 +940,26 @@ div.stButton > button:active, div.stDownloadButton > button:active {
 
 /* ---------- Ambiente: loops muy suaves ---------- */
 @keyframes pingRing {
-  0%   { transform: scale(.75); opacity: .30; }
-  70%, 100% { transform: scale(2.1); opacity: 0; }
+  0%   { transform: scale(.7); opacity: .35; }
+  70%, 100% { transform: scale(2.3); opacity: 0; }
 }
 @keyframes tabGlow {
   0%, 100% {
-    box-shadow: inset 0 0 0 1px rgba(138, 180, 248, .38),
-                0 0 14px -8px rgba(138, 180, 248, .45);
+    box-shadow: inset 0 0 0 1px rgba(138, 180, 248, .45),
+                0 0 16px -8px rgba(138, 180, 248, .55);
   }
   50% {
-    box-shadow: inset 0 0 0 1px rgba(138, 180, 248, .52),
-                0 0 22px -6px rgba(138, 180, 248, .7);
+    box-shadow: inset 0 0 0 1px rgba(138, 180, 248, .62),
+                0 0 28px -5px rgba(138, 180, 248, .85);
   }
 }
 @keyframes haloDrift {
-  from { transform: translate3d(-1.4%, 0, 0) scale(1); }
-  to   { transform: translate3d(1.4%, 1.6%, 0) scale(1.04); }
+  from { transform: translate3d(-2.2%, 0, 0) scale(1); }
+  to   { transform: translate3d(2.2%, 2.2%, 0) scale(1.06); }
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .stApp::before { animation: haloDrift 26s ease-in-out infinite alternate; }
+  .stApp::before { animation: haloDrift 22s ease-in-out infinite alternate; }
 }
 
 /* ---------- Accesibilidad: sin movimiento ---------- */
@@ -902,14 +968,22 @@ div.stButton > button:active, div.stDownloadButton > button:active {
   .cc-dot, .cc-arrow, .hbadge, .hbadge i::after, .callout, .co-ico,
   .verdict, .gcard, .formula, .formula::after,
   div.stButton > button, div.stDownloadButton > button,
-  .stTabs [data-testid="stTab"], [role="slider"],
-  [data-testid="stExpander"] summary svg, .stApp::before {
+  .stTabs [data-testid="stTab"],
+  [data-testid="stSlider"] div:has(> [data-testid="stSliderThumbValue"]),
+  [data-testid="stExpander"] summary svg, .stApp::before,
+  [data-testid="stTabPanel"], [data-testid="stTabPanel"]::after,
+  [data-testid="stTabPanel"] > [data-testid="stVerticalBlock"] >
+  :is([data-testid="stElementContainer"], [data-testid="stLayoutWrapper"]) {
     animation: none !important;
     transition: none !important;
   }
+  [data-testid="stTabPanel"]::after { display: none !important; }
   .intro, .sec, .card, .chip, .callout, .verdict, .formula, .gcard,
-  .ch, .lgrow, [data-testid="stMetric"] {
+  .ch, .lgrow, [data-testid="stMetric"], [data-testid="stTabPanel"],
+  [data-testid="stTabPanel"] > [data-testid="stVerticalBlock"] >
+  :is([data-testid="stElementContainer"], [data-testid="stLayoutWrapper"]) {
     opacity: 1 !important;
     translate: none !important;
+    scale: none !important;
   }
 }
