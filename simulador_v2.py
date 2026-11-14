@@ -2322,7 +2322,7 @@ with tab_digital:
     with k3:
         _chip("🧮", "Err. símbolo teórico", _fmt_ber(ser_t), "#f5b04b")
     with k4:
-        _chip("🎲", f"Err. símbolo medido ({sim['n'] // 1000} mil)",
+        _chip("🎲", "Err. símbolo medido",
               _fmt_ber(ser_m) if ser_m > 0 else f"0 (< {_fmt_ber(1 / sim['n'])})", "#7ee2b8")
     h1, h2, h3 = st.columns(3)
     with h1:

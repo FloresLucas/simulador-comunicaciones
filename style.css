@@ -1111,3 +1111,13 @@ body:has(.pres-on) .hero-wave { height: 44px; }
 }
 @keyframes cntUpA { from { --cn: var(--fr); } }
 @keyframes cntUpB { from { --cn: var(--fr); } }
+
+/* ---------- Ajustes finales para pantallas angostas ---------- */
+@media (max-width: 640px) {
+  .sec { align-items: flex-start; }
+  .sec-lab { white-space: normal; line-height: 1.4; }
+  .sec-line { min-width: 16px; margin-top: 8px; }
+  .chip-lab { white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.3; }
+  .ch { flex-wrap: wrap; row-gap: 2px; }
+  .ch-r { white-space: normal; }
+}
