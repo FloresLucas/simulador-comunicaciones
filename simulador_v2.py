@@ -32,15 +32,23 @@ except ImportError:
 
 st.set_page_config(
     page_title="Simulador TFI - Comunicaciones",
+    page_icon="📡",
     layout="wide",
     initial_sidebar_state="auto",
 )
 
+
 # CSS modular: todo el diseño vive en style.css (ver .clinerules).
+@st.cache_data(show_spinner=False)
+def _load_css(ruta):
+    ruta = Path(ruta)
+    return ruta.read_text(encoding="utf-8") if ruta.exists() else ""
+
+
 _CSS_PATH = Path(__file__).with_name("style.css")
-if _CSS_PATH.exists():
-    st.markdown(f"<style>{_CSS_PATH.read_text(encoding='utf-8')}</style>",
-                unsafe_allow_html=True)
+_css = _load_css(str(_CSS_PATH))
+if _css:
+    st.markdown(f"<style>{_css}</style>", unsafe_allow_html=True)
 
 SEN_OLA = "Onda Senoidal (Analógica)"
 SEN_PULSO = "Tren de Pulsos (Digital)"
@@ -1449,10 +1457,6 @@ def _ebn0_requerido(mod, ber_obj=1e-5):
     return hi
 
 
-_POS_TXT = {"BPSK": "bottom center", "DPSK": "top center", "OOK": "middle right",
-            "QPSK": "middle left", "8-PSK": "top center", "8-QAM": "bottom center"}
-
-
 @st.cache_data(show_spinner=False, max_entries=16)
 def _fig_eficiencia(mod):
     """Eficiencia espectral ideal (k bit/s/Hz) contra el Eb/N0 que exige cada modulación."""
@@ -1468,7 +1472,7 @@ def _fig_eficiencia(mod):
             customdata=ms,
             hovertemplate="%{customdata}: %{x:.1f} dB, %{y} bit/s/Hz<extra></extra>",
             marker=dict(color=_COLOR_FAMILIA[fam], size=[15 if m == mod else 9 for m in ms],
-                        opacity=1.0 if fam == "X" else 0.9,
+                        opacity=0.9,
                         line=dict(color="#141218", width=1.2))))
     # Solo se rotula la modulación elegida: 12 etiquetas superpuestas era ruido.
     _kx = _ebn0_requerido(mod)

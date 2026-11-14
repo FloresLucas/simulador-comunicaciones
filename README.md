@@ -6,6 +6,9 @@ TX → canal → RX y permite ver en vivo los límites de **Nyquist** (muestreo)
 
 ## Ejecutar
 
+Requiere **Python 3.11**. Las versiones de las dependencias están fijadas en
+`requirements.txt` a las que se usaron para probar la aplicación.
+
 ```bash
 pip install -r requirements.txt
 streamlit run simulador_v2.py
@@ -26,12 +29,31 @@ streamlit run simulador_v2.py
   tarjetas y descargar resultados y señales en CSV.
 - **Modo presentación**: ancho de página ampliado para proyectar.
 
+## Estructura
+
+```
+simulador_v2.py      aplicación principal (Streamlit)
+style.css            diseño y animaciones
+tests/               pruebas de integración con AppTest
+legacy/              versión histórica del simulador (referencia)
+.streamlit/          tema y configuración del servidor
+```
+
+## Capturas
+
+![Pantalla principal](docs/img/hero.png)
+
+![Pestaña Digital](docs/img/digital.png)
+
 ## Tests
 
 ```bash
 pip install -r requirements-dev.txt
 pytest tests -q
 ```
+
+La integración continua de GitHub Actions ejecuta `py_compile` y la misma suite
+en cada push y pull request.
 
 ## Modelo
 
@@ -47,11 +69,24 @@ pytest tests -q
 
 Las perturbaciones adicionales se tratan como parte del ruido N = N₀·B (se escalan con el ancho de banda) para mantener un único modelo; el osciloscopio de la pestaña Señal solo dibuja el AWGN y la ráfaga.
 
-
 Modelo simplificado (solo ruido blanco gaussiano aditivo, sin codificación de canal
 ni sincronización). En el tren de pulsos, el ruido dibujado por el oscilador
 en JavaScript es independiente de la semilla de Python, por lo que el SNR medido
 en pantalla puede variar levemente.
+
+## Referencias
+
+- C. E. Shannon, «A Mathematical Theory of Communication», *Bell System Technical
+  Journal*, 1948.
+- H. Nyquist, «Certain Topics in Telegraph Transmission Theory», *Transactions of
+  the AIEE*, 1928.
+- J. G. Proakis y M. Salehi, *Digital Communications*, 5.ª ed., McGraw-Hill.
+- B. Sklar, *Digital Communications: Fundamentals and Applications*, 2.ª ed.,
+  Prentice Hall.
+
+## Licencia
+
+MIT — ver [LICENSE](LICENSE).
 
 ## Autor
 
