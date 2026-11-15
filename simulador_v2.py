@@ -2113,7 +2113,7 @@ with tab_muestreo:
               "aliasing cuando fs no supera 2f." + _base_line("error_recon", "%", False, 2),
               color="#8ab4f8")
     with mr2:
-        _callout("porque", "Por qué la línea lila se queda corta y la celeste no",
+        _callout("porque", "Por qué la línea naranja se queda corta y la verde no",
                  "Unir los puntos con tramos rectos recorta los picos de la señal; la reconstrucción con "
                  "sinc, en cambio, suma una función de interpolación por muestra y reproduce la "
                  "original, siempre que fs > 2f. Si fs no supera ese umbral, el área roja de error se "
@@ -2442,7 +2442,7 @@ with st.expander("📖 Guía de lectura — cómo leer este simulador"):
     with gg2:
         _guide("🎯", "Muestreo",
                "Regla de oro para la senoidal: fs > 2f (con fs = 2f exacto se pierde). Al reproducir la "
-               "reconstrucción se ve que la línea celeste (sinc) acierta si la condición se cumple; el "
+               "reconstrucción se ve que la línea verde (sinc) acierta si la condición se cumple; el "
                "área roja (error) explota con el aliasing. El pulso no es limitado en banda: su error "
                "nunca llega a 0.")
         _guide("⚖️", "Shannon",
